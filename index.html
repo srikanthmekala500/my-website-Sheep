@@ -527,6 +527,25 @@
         <div class="modal fade" id="batchTreatmentModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content" id="batchTreatmentForm"><div class="modal-header"><h5 class="modal-title">Log Batch Treatment</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Applying treatment to <strong id="batchCount">0</strong> selected sheep.</p><div class="mb-3"><label for="batchTreatmentType" class="form-label">Treatment Type</label><select id="batchTreatmentType" class="form-select" required><option value="" disabled selected>Select a type...</option><option value="Deworming">Deworming</option><option value="Vaccination">Vaccination</option></select></div><div class="mb-3"><label for="batchTreatmentDate" class="form-label">Treatment Date</label><input type="date" class="form-control" id="batchTreatmentDate" required></div><div class="mb-3"><label for="batchMedication" class="form-label">Medication/Brand</label><input type="text" class="form-control" id="batchMedication" placeholder="e.g., Ivermectin, Cydectin"></div><div class="mb-3"><label for="batchDosage" class="form-label">Dosage</label><input type="text" class="form-control" id="batchDosage" placeholder="e.g., 5ml"></div><div class="mb-3"><label for="batchTreatmentNotes" class="form-label">Notes</label><textarea class="form-control" id="batchTreatmentNotes" rows="2"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-success">Apply to All</button></div></form></div></div>
     </div>
 
+    <!-- HTML Templates for Dynamic Content -->
+    <template id="healthy-record-row-template">
+        <tr>
+            <td data-field="sheepId" class="fw-bold"></td>
+            <td><span data-field="healthStatus"></span></td>
+            <td data-field="dateRecorded"></td>
+            <td data-field="weight"></td>
+            <td data-field="temperature"></td>
+            <td data-field="notes"></td>
+            <td>
+                <button class="btn btn-sm btn-info" data-action="manage-treatment" title="Manage Treatments"><i class="fas fa-notes-medical"></i></button>
+                <button class="btn btn-sm btn-outline-primary" data-action="edit-record" title="Edit"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-sm btn-outline-success" data-action="sale-record" title="Mark as Sold"><i class="fas fa-dollar-sign"></i></button>
+                <button class="btn btn-sm btn-outline-danger" data-action="delete-record" title="Permanently Delete"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-outline-secondary" data-action="archive-record" title="Mark as Deceased/Archive"><i class="fas fa-archive"></i></button>
+            </td>
+        </tr>
+    </template>
+
     <!-- Toast Notification Container -->
     <div class="toast-container position-fixed bottom-0 end-0 p-3">
         <div id="appToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
