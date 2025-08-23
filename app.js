@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-import { getDatabase, ref, onValue, push, update, remove, child, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
+import { getDatabase, ref, onValue, push, update, remove, child, orderByChild, query } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
 
 // --- CONFIGURATION ---
 
@@ -261,8 +261,9 @@ function fetchAllRecords() {
 }
 
 function fetchSoldRecords() {
-    const soldRef = orderByChild(ref(db, "sheepSaledRecords"), "saleDate");
-    onValue(soldRef, snapshot => {
+    const recordsRef = ref(db, "sheepSaledRecords");
+    const soldQuery = query(recordsRef, orderByChild("saleDate"));
+    onValue(soldQuery, snapshot => {
         const tableBody = document.getElementById('sheepSaledTableBody');
         soldRecords = [];
         let rowsHtml = '';
@@ -283,8 +284,9 @@ function fetchSoldRecords() {
 }
 
 function fetchArchivedRecords() {
-    const archivedRef = orderByChild(ref(db, "sheepArchivedRecords"), "archiveDate");
-    onValue(archivedRef, snapshot => {
+    const recordsRef = ref(db, "sheepArchivedRecords");
+    const archivedQuery = query(recordsRef, orderByChild("archiveDate"));
+    onValue(archivedQuery, snapshot => {
         const tableBody = document.getElementById('archivedRecordsTableBody');
         archivedRecords = [];
         let rowsHtml = '';
