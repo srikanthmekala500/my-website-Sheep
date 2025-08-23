@@ -129,7 +129,7 @@ function addEventListeners() {
     });
 
     // --- Form Submissions ---
-    document.getElementById('sheepHealthForm').addEventListener('submit', handleAddRecord);
+    // document.getElementById('sheepHealthForm').addEventListener('submit', handleAddRecord);
     document.getElementById('editSheepForm').addEventListener('submit', handleUpdateRecord);
     document.getElementById('saleSheepForm').addEventListener('submit', handleSaleSubmit);
     document.getElementById('addTreatmentForm').addEventListener('submit', handleSaveTreatment);
@@ -1670,3 +1670,4 @@ function downloadCSV(csv, filename) {
         document.body.removeChild(link);
     }
 }
+
