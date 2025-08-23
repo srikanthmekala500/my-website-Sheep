@@ -526,6 +526,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // GITHUB PAGES DEPLOYMENT NOTE:
+        // For Firebase Authentication to work when hosted on GitHub Pages, you MUST add your GitHub Pages domain
+        // to the list of authorized domains in your Firebase project.
+        // 1. Go to the Firebase Console (https://console.firebase.google.com/).
+        // 2. Select your project ('sheep-1b6a7').
+        // 3. Go to Authentication -> Settings -> Authorized domains.
+        // 4. Click "Add domain" and enter your GitHub Pages domain (e.g., your-username.github.io).
         const firebaseConfig = { apiKey: "AIzaSyBdiEUorFPkiZAya84Xzx17id82nB77Zg4", authDomain: "sheep-1b6a7.firebaseapp.com", databaseURL: "https://sheep-1b6a7-default-rtdb.firebaseio.com", projectId: "sheep-1b6a7", storageBucket: "sheep-1b6a7.firebasestorage.app", messagingSenderId: "243565434909", appId: "1:243565434909:web:25312f89033e3fd0d54ef4" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
