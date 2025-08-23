@@ -962,28 +962,6 @@ function updateGrowthAnalytics() {
 
 // --- FORM & MODAL HANDLERS ---
 
-function handleAddRecord(e) {
-    e.preventDefault();
-    const newRecord = {
-        sheepId: document.getElementById('sheepId').value.trim(),
-        healthStatus: document.getElementById('healthStatus').value,
-        dateRecorded: document.getElementById('dateRecorded').value,
-        notes: document.getElementById('notes').value.trim(),
-        weight: document.getElementById('weight').value || null,
-        temperature: document.getElementById('temperature').value || null,
-    };
-    if (!newRecord.sheepId || !newRecord.dateRecorded) return alert("Sheep ID and Date are required.");
-    const isDuplicate = allRecords.some(record => record.sheepId.toLowerCase() === newRecord.sheepId.toLowerCase());
-    if (isDuplicate) {
-        alert(`Error: A sheep with ID "${newRecord.sheepId}" already exists in the active records. Please use a unique ID.`);
-        return;
-    }
-    push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
-        e.target.reset();
-        document.getElementById('dateRecorded').valueAsDate = new Date();
-    });
-}
-
 function openEditModal(recordId) {
     const record = allRecords.find(r => r.id === recordId);
     if (!record) return;
@@ -998,37 +976,6 @@ function openEditModal(recordId) {
     document.getElementById('editManualVaccinationDueDate').value = record.manualVaccinationDueDate || '';
     document.getElementById('editLastVaccinationNotes').value = record.lastVaccinationNotes || '';
     editSheepModal.show();
-}
-
-function handleUpdateRecord(e) {
-    e.preventDefault();
-    const recordId = document.getElementById('editRecordId').value;
-    const updatedData = {
-        sheepId: document.getElementById('editSheepId').value.trim(),
-        healthStatus: document.getElementById('editHealthStatus').value,
-        dateRecorded: document.getElementById('editDateRecorded').value,
-        notes: document.getElementById('editNotes').value.trim(),
-        lastDewormingDate: document.getElementById('editLastDewormingDate').value || null,
-        lastDewormingNotes: document.getElementById('editLastDewormingNotes').value.trim() || null,
-        lastVaccinationDate: document.getElementById('editLastVaccinationDate').value || null,
-        manualVaccinationDueDate: document.getElementById('editManualVaccinationDueDate').value || null,
-        lastVaccinationNotes: document.getElementById('editLastVaccinationNotes').value.trim() || null,
-    };
-
-    if (updatedData.healthStatus === 'Deceased') {
-        editSheepModal.hide();
-        archiveRecord(recordId);
-        return;
-    }
-
-    const isDuplicate = allRecords.some(
-        record => record.id !== recordId && record.sheepId.toLowerCase() === updatedData.sheepId.toLowerCase()
-    );
-    if (isDuplicate) {
-        alert(`Error: Another sheep with ID "${updatedData.sheepId}" already exists. Please use a unique ID.`);
-        return;
-    }
-    update(ref(db, `sheepHealthRecords/${recordId}`), updatedData).then(() => editSheepModal.hide());
 }
 
 function deleteRecord(recordId, sheepId) {
@@ -1074,29 +1021,6 @@ function openSaleModal(recordId) {
     saleSheepModal.show();
 }
 
-function handleSaleSubmit(e) {
-    e.preventDefault();
-    const recordId = document.getElementById('saleRecordId').value;
-    const recordToSell = allRecords.find(r => r.id === recordId);
-    if (!recordToSell) return alert("Record not found.");
-
-    const soldRecord = {
-        ...recordToSell,
-        saleDate: document.getElementById('saleDate').value,
-        salePrice: document.getElementById('salePrice').value,
-        saleBuyer: document.getElementById('saleBuyer').value.trim(),
-        saleNotes: document.getElementById('saleNotes').value.trim(),
-    };
-    delete soldRecord.id;
-
-    push(ref(db, 'sheepSaledRecords'), soldRecord).then(() => {
-        remove(ref(db, `sheepHealthRecords/${recordId}`)).then(() => {
-            saleSheepModal.hide();
-            e.target.reset();
-        });
-    });
-}
-
 function openTreatmentLog(recordId, sheepId) {
     document.getElementById('modalSheepId').textContent = sheepId;
     document.getElementById('currentSheepRecordId').value = recordId;
@@ -1127,54 +1051,6 @@ function openTreatmentLog(recordId, sheepId) {
     treatmentLogModal.show();
 }
 
-function handleSaveTreatment(e) {
-    e.preventDefault();
-    const recordId = document.getElementById('currentSheepRecordId').value;
-    const entryId = document.getElementById('treatmentEntryId').value;
-    const treatmentType = document.getElementById('treatmentType').value;
-    const treatmentDate = document.getElementById('treatmentDate').value;
-    const treatmentWeight = parseFloat(document.getElementById('treatmentWeight').value);
-
-    const entryData = {
-        treatmentDate: treatmentDate,
-        treatmentType: treatmentType,
-        symptoms: document.getElementById('symptoms').value,
-        medication: document.getElementById('medication').value,
-        dosage: document.getElementById('dosage').value,
-        followUpDate: document.getElementById('followUpDate').value,
-        treatmentNotes: document.getElementById('treatmentNotes').value,
-    };
-
-    if (!isNaN(treatmentWeight) && treatmentWeight > 0) {
-        const weightData = { date: treatmentDate, weight: treatmentWeight };
-        push(ref(db, `sheepHealthRecords/${recordId}/weights`), weightData);
-    }
-
-    const treatmentsRef = ref(db, `sheepHealthRecords/${recordId}/treatments`);
-    const promise = entryId ? update(child(treatmentsRef, entryId), entryData) : push(treatmentsRef, entryData);
-
-    promise.then(() => {
-        const mainRecordUpdates = {};
-        if (treatmentType === 'Deworming') {
-            mainRecordUpdates.lastDewormingDate = treatmentDate;
-            mainRecordUpdates.lastDewormingNotes = entryData.treatmentNotes;
-        } else if (treatmentType === 'Vaccination') {
-            mainRecordUpdates.lastVaccinationDate = treatmentDate;
-            mainRecordUpdates.lastVaccinationNotes = entryData.treatmentNotes;
-        }
-
-        const record = allRecords.find(r => r.id === recordId);
-        if (record && record.healthStatus === 'Sick') {
-            mainRecordUpdates.healthStatus = 'Under Treatment';
-        }
-
-        if (Object.keys(mainRecordUpdates).length > 0) {
-            update(ref(db, `sheepHealthRecords/${recordId}`), mainRecordUpdates);
-        }
-        resetTreatmentForm();
-    });
-}
-
 function editTreatmentEntry(recordId, entryId) {
     const entryRef = ref(db, `sheepHealthRecords/${recordId}/treatments/${entryId}`);
     onValue(entryRef, snapshot => {
@@ -1201,45 +1077,6 @@ function resetTreatmentForm() {
     document.getElementById('addTreatmentForm').reset();
     document.getElementById('treatmentEntryId').value = '';
     document.getElementById('treatmentDate').valueAsDate = new Date();
-}
-
-function handleBatchSaveTreatment(e) {
-    e.preventDefault();
-    const selectedCheckboxes = document.querySelectorAll('#scheduleTableBody .sheep-select-checkbox:checked');
-    const recordIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
-
-    const treatmentType = document.getElementById('batchTreatmentType').value;
-    const treatmentDate = document.getElementById('batchTreatmentDate').value;
-
-    if (!treatmentType || !treatmentDate) {
-        return alert('Treatment Type and Date are required.');
-    }
-
-    const entryData = {
-        treatmentDate: treatmentDate,
-        treatmentType: treatmentType,
-        medication: document.getElementById('batchMedication').value,
-        dosage: document.getElementById('batchDosage').value,
-        treatmentNotes: document.getElementById('batchTreatmentNotes').value,
-        symptoms: 'Batch logged treatment',
-        followUpDate: ''
-    };
-
-    const allUpdates = {};
-    recordIds.forEach(recordId => {
-        const newTreatmentKey = push(child(ref(db), `sheepHealthRecords/${recordId}/treatments`)).key;
-        allUpdates[`sheepHealthRecords/${recordId}/treatments/${newTreatmentKey}`] = entryData;
-
-        if (treatmentType === 'Deworming') {
-            allUpdates[`sheepHealthRecords/${recordId}/lastDewormingDate`] = treatmentDate;
-            allUpdates[`sheepHealthRecords/${recordId}/lastDewormingNotes`] = entryData.treatmentNotes;
-        } else if (treatmentType === 'Vaccination') {
-            allUpdates[`sheepHealthRecords/${recordId}/lastVaccinationDate`] = treatmentDate;
-            allUpdates[`sheepHealthRecords/${recordId}/lastVaccinationNotes`] = entryData.treatmentNotes;
-        }
-    });
-
-    update(ref(db), allUpdates).then(() => batchTreatmentModal.hide());
 }
 
 // --- SHEEP PROFILE SECTION ---
@@ -1469,32 +1306,6 @@ function openWeightModal(recordId, entryId = null, source = 'log') {
         document.getElementById('weightEntryDate').valueAsDate = new Date();
     }
     weightEntryModal.show();
-}
-
-function handleSaveWeight(e) {
-    e.preventDefault();
-    const recordId = document.getElementById('weightRecordId').value;
-    const entryId = document.getElementById('weightEntryId').value;
-    const source = document.getElementById('weightEntrySource').value;
-    const date = document.getElementById('weightEntryDate').value;
-    const weight = parseFloat(document.getElementById('weightEntryValue').value);
-
-    if (!date || isNaN(weight)) {
-        return alert('Please provide a valid date and weight.');
-    }
-
-    let promise;
-    if (source === 'initial') {
-        promise = update(ref(db, `sheepHealthRecords/${recordId}`), { weight: weight, dateRecorded: date });
-    } else {
-        const data = { date, weight };
-        const path = ref(db, `sheepHealthRecords/${recordId}/weights`);
-        promise = entryId ? update(child(path, entryId), data) : push(path, data);
-    }
-
-    promise.then(() => {
-        weightEntryModal.hide();
-    }).catch(err => alert('Error saving weight: ' + err.message));
 }
 
 function deleteWeightEntry(recordId, entryId, source) {
