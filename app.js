@@ -2,6 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
 import { getDatabase, ref, onValue, push, update, remove, child, orderByChild, query } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
 
+console.log("app.js loaded successfully."); // Diagnostic log to confirm file version
 // --- CONFIGURATION ---
 
 // GITHUB PAGES DEPLOYMENT NOTE:
