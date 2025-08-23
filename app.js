@@ -227,12 +227,8 @@ function showSection(sectionName) {
 function fetchAllRecords() {
     const recordsRef = ref(db, "sheepHealthRecords");
     onValue(recordsRef, snapshot => {
-        const healthyTable = document.getElementById('healthyRecordsTableBody');
-        const treatmentTable = document.getElementById('treatmentRecordsTableBody');
-        const analyticsHealthyTable = document.getElementById('analyticsHealthyRecordsTableBody');
-        healthyTable.innerHTML = '';
-        treatmentTable.innerHTML = '';
-        analyticsHealthyTable.innerHTML = '';
+        let healthyHtml = '';
+        let treatmentHtml = '';
         allRecords = [];
 
         if (snapshot.exists()) {
@@ -241,14 +237,17 @@ function fetchAllRecords() {
                 allRecords.push(record);
                 const status = record.healthStatus;
                 if (status === 'Healthy' || status === 'Recovering') {
-                    const rowHtml = renderHealthyRow(record);
-                    healthyTable.innerHTML += rowHtml;
-                    analyticsHealthyTable.innerHTML += rowHtml;
+                    healthyHtml += renderHealthyRow(record);
                 } else {
-                    treatmentTable.innerHTML += renderTreatmentRow(record);
+                    treatmentHtml += renderTreatmentRow(record);
                 }
             });
         }
+
+        document.getElementById('healthyRecordsTableBody').innerHTML = healthyHtml || `<tr><td colspan="7" class="text-center">No healthy records.</td></tr>`;
+        document.getElementById('analyticsHealthyRecordsTableBody').innerHTML = healthyHtml || `<tr><td colspan="7" class="text-center">No healthy records.</td></tr>`;
+        document.getElementById('treatmentRecordsTableBody').innerHTML = treatmentHtml || `<tr><td colspan="5" class="text-center">No treatment records.</td></tr>`;
+
         updateAnalytics();
         updateGrowthAnalytics();
         updateScheduleView();
