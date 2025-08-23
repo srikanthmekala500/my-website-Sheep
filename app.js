@@ -63,7 +63,7 @@ function cacheDOMElements() {
         'analyticsSearchInput', 'analyticsHealthyRecordsTableBody', 'exportHealthyBtn', 'exportTreatmentBtn', 'exportAnalyticsBtn',
         'editSheepModal', 'editSheepForm', 'saleSheepModal', 'saleSheepForm', 'treatmentLogModal', 'addTreatmentForm',
         'resetTreatmentFormBtn', 'treatmentLogTbody', 'modalSheepId', 'currentSheepRecordId', 'treatmentEntryId',
-        'weightEntryModal', 'weightEntryForm', 'batchTreatmentModal', 'batchTreatmentForm', 'batchCount', 'batchTreatmentDate',
+        'weightEntryModal', 'weightEntryForm', 'batchTreatmentModal', 'batchTreatmentForm', 'batchCount', 'batchTreatmentDate', 'loadingOverlay',
         'appToast', 'toastTitle', 'toastBody'
     ];
     ids.forEach(id => {
@@ -205,11 +205,16 @@ onAuthStateChanged(auth, user => {
     if (user) {
         DOMElements.mainApp.style.display = 'block';
         DOMElements.authSection.style.display = 'none';
-        initializeAppUI();
+        if (!state.isInitialized) {
+            initializeAppUI();
+            state.isInitialized = true;
+        }
     } else {
         DOMElements.mainApp.style.display = 'none';
         DOMElements.authSection.style.display = 'block';
     }
+    // Hide the loading overlay after auth check is complete
+    DOMElements.loadingOverlay.style.display = 'none';
 });
 
 async function handleLogin(e) {
