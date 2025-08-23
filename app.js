@@ -276,6 +276,9 @@ function fetchSoldRecords() {
         }
         tableBody.innerHTML = rowsHtml || `<tr><td colspan="7" class="text-center">No sold records.</td></tr>`;
         updateProfileView();
+    }, error => {
+        console.error("Error fetching sold records:", error);
+        document.getElementById('sheepSaledTableBody').innerHTML = `<tr><td colspan="7" class="text-center text-danger">Error loading sold records. Check browser console for details.</td></tr>`;
     });
 }
 
@@ -295,6 +298,9 @@ function fetchArchivedRecords() {
         }
         tableBody.innerHTML = rowsHtml || `<tr><td colspan="6" class="text-center">No archived records.</td></tr>`;
         updateProfileView();
+    }, error => {
+        console.error("Error fetching archived records:", error);
+        document.getElementById('archivedRecordsTableBody').innerHTML = `<tr><td colspan="6" class="text-center text-danger">Error loading archived records. Check browser console for details.</td></tr>`;
     });
 }
 
