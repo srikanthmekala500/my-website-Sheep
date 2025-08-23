@@ -18,7 +18,7 @@ let allRecords = [];
 let soldRecords = [];
 let archivedRecords = [];
 let editSheepModal, saleSheepModal, treatmentLogModal, weightEntryModal, batchTreatmentModal;
-let healthStatusChart, weightChart, profileWeightChart;
+let weightChart, profileWeightChart;
 let currentWeeklyFilter = 'all';
 let currentScheduleFilter = 'all';
 
@@ -85,7 +85,7 @@ function handleLogin(e) {
  * @param {string} sectionName - The name of the section to show.
  */
 function showSection(sectionName) {
-    ['home', 'records', 'corentin', 'overdue', 'treatment', 'saled', 'analytics', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth'].forEach(id => {
+    ['home', 'records', 'corentin', 'overdue', 'treatment', 'saled', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth'].forEach(id => {
         document.getElementById(id + 'Section').classList.add('hidden');
     });
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
@@ -172,7 +172,6 @@ function fetchAllRecords() {
         const treatmentHtml = underTreatmentRecords.map(renderTreatmentRow).join('');
 
         document.getElementById('healthyRecordsTableBody').innerHTML = healthyHtml || `<tr><td colspan="7" class="text-center">No healthy records.</td></tr>`;
-        document.getElementById('analyticsHealthyRecordsTableBody').innerHTML = healthyHtml || `<tr><td colspan="7" class="text-center">No healthy records.</td></tr>`;
         document.getElementById('overdueRecordsTableBody').innerHTML = overdueHtml || `<tr><td colspan="5" class="text-center">No overdue records. Great job!</td></tr>`;
         document.getElementById('corentinRecordsTableBody').innerHTML = corentinHtml || `<tr><td colspan="5" class="text-center">No 'Corentin' status records.</td></tr>`;
         document.getElementById('treatmentRecordsTableBody').innerHTML = treatmentHtml || `<tr><td colspan="5" class="text-center">No 'Under Treatment' records.</td></tr>`;
@@ -191,7 +190,6 @@ function fetchAllRecords() {
 
         // Display error message in all dependent tables
         document.getElementById('healthyRecordsTableBody').innerHTML = errorHtml(7);
-        document.getElementById('analyticsHealthyRecordsTableBody').innerHTML = errorHtml(7);
         document.getElementById('overdueRecordsTableBody').innerHTML = errorHtml(5);
         document.getElementById('corentinRecordsTableBody').innerHTML = errorHtml(5);
         document.getElementById('treatmentRecordsTableBody').innerHTML = errorHtml(5);
@@ -200,7 +198,6 @@ function fetchAllRecords() {
 
         // Reset analytics to a zero/error state
         ['totalCount', 'healthyCount', 'sickCount', 'treatmentCount'].forEach(id => document.getElementById(id).textContent = '0');
-        if (healthStatusChart) { healthStatusChart.destroy(); healthStatusChart = null; }
     });
 }
 
@@ -285,33 +282,31 @@ function renderMonthlySalesSummary(monthlyTotals) {
     const container = document.getElementById('monthlySalesSummary');
     if (!container) return;
 
+    // The container is now the card body, so we clear it and build the list inside.
     if (Object.keys(monthlyTotals).length === 0) {
-        container.innerHTML = '<div class="col-12"><p class="text-muted">No sales data available to generate a monthly summary.</p></div>';
+        container.innerHTML = '<p class="text-muted text-center p-3 mb-0">No sales data available.</p>';
         return;
     }
 
-    // Sort months chronologically, newest first
-    const sortedMonths = Object.keys(monthlyTotals).sort().reverse();
+    // Sort months chronologically, newest first, and limit to the last 6 for a clean look
+    const sortedMonths = Object.keys(monthlyTotals).sort().reverse().slice(0, 6);
 
-    let summaryHtml = '';
+    let listHtml = '<ul class="list-group list-group-flush">';
     sortedMonths.forEach(monthKey => {
         const total = monthlyTotals[monthKey];
         const [year, month] = monthKey.split('-');
         const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
 
-        summaryHtml += `
-            <div class="col-md-4 col-lg-3 mb-3">
-                <div class="card h-100">
-                    <div class="card-body text-center">
-                        <h6 class="card-title text-muted">${monthName} ${year}</h6>
-                        <h4 class="card-text text-success">₹${total.toFixed(2)}</h4>
-                    </div>
-                </div>
-            </div>
+        listHtml += `
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>${monthName} ${year}</span>
+                <strong class="text-success">₹${total.toFixed(2)}</strong>
+            </li>
         `;
     });
+    listHtml += '</ul>';
 
-    container.innerHTML = summaryHtml;
+    container.innerHTML = listHtml;
 }
 
 function renderArchivedRow(record) {
@@ -1569,40 +1564,6 @@ function updateAnalytics() {
     document.getElementById('healthyCount').textContent = healthy;
     document.getElementById('sickCount').textContent = corentin;
     document.getElementById('treatmentCount').textContent = treatment;
-
-    renderAnalyticsChart(healthy, corentin, treatment);
-}
-
-function renderAnalyticsChart(healthy, corentin, treatment) {
-    const ctx = document.getElementById('healthStatusChart').getContext('2d');
-
-    if (healthStatusChart) {
-        healthStatusChart.destroy();
-    }
-
-    healthStatusChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Healthy/Recovering', 'Corentin', 'Under Treatment'],
-            datasets: [{
-                label: 'Sheep Status',
-                data: [healthy, corentin, treatment],
-                backgroundColor: [
-                    'rgba(40, 167, 69, 0.8)',
-                    'rgba(220, 53, 69, 0.8)',
-                    'rgba(255, 193, 7, 0.8)'
-                ],
-                borderColor: ['#fff'],
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'top' }
-            }
-        }
-    });
 }
 
 // --- UTILITY FUNCTIONS ---
