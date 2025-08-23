@@ -85,7 +85,7 @@ function handleLogin(e) {
  * @param {string} sectionName - The name of the section to show.
  */
 function showSection(sectionName) {
-    ['home', 'records', 'treatment', 'saled', 'analytics', 'archived', 'schedule', 'weekly', 'weight', 'profile'].forEach(id => {
+    ['home', 'records', 'corentin', 'overdue', 'treatment', 'saled', 'analytics', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth'].forEach(id => {
         document.getElementById(id + 'Section').classList.add('hidden');
     });
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
@@ -101,11 +101,46 @@ function showSection(sectionName) {
 
 // --- DATA FETCHING ---
 
+/**
+ * Determines the follow-up status of a record based on its latest treatment.
+ * @param {object} record - The sheep record.
+ * @returns {string} 'overdue', 'upcoming', or 'none'.
+ */
+function getFollowUpStatus(record) {
+    // Ensure treatments is a non-null object before processing to prevent errors on malformed data.
+    if (!record.treatments || typeof record.treatments !== 'object') return 'none';
+
+    const treatmentsWithFollowUp = Object.values(record.treatments)
+        .filter(t => t.followUpDate)
+        .sort((a, b) => new Date(b.followUpDate) - new Date(a.followUpDate));
+
+    if (treatmentsWithFollowUp.length === 0) return 'none';
+
+    const latestFollowUpDateStr = treatmentsWithFollowUp[0].followUpDate;
+    // Use UTC for consistent date comparison
+    const parts = latestFollowUpDateStr.split('-').map(p => parseInt(p, 10));
+    if (parts.length !== 3) return 'none';
+    const followUpDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+
+    const today = new Date();
+    const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+    if (isNaN(followUpDate.getTime())) return 'none';
+
+    if (followUpDate < todayUTC) {
+        return 'overdue';
+    } else { // Includes today and future dates
+        return 'upcoming';
+    }
+}
+
 function fetchAllRecords() {
     const recordsRef = ref(db, "sheepHealthRecords");
-    onValue(recordsRef, snapshot => {
+    onValue(recordsRef, (snapshot) => {
         let healthyHtml = '';
-        let treatmentHtml = '';
+        let corentinRecords = [];
+        let overdueRecords = [];
+        let underTreatmentRecords = [];
         allRecords = [];
 
         if (snapshot.exists()) {
@@ -113,17 +148,34 @@ function fetchAllRecords() {
                 const record = { id: child.key, ...child.val() };
                 allRecords.push(record);
                 const status = record.healthStatus;
+
                 if (status === 'Healthy' || status === 'Recovering') {
                     healthyHtml += renderHealthyRow(record);
-                } else {
-                    treatmentHtml += renderTreatmentRow(record);
+                } else if (status === 'Corentin' || status === 'Under Treatment') {
+                    // Check for overdue status first to pull them into a separate list
+                    if (getFollowUpStatus(record) === 'overdue') {
+                        overdueRecords.push(record);
+                    } else {
+                        // If not overdue, sort into their respective lists
+                        if (status === 'Corentin') {
+                            corentinRecords.push(record);
+                        } else { // Under Treatment
+                            underTreatmentRecords.push(record);
+                        }
+                    }
                 }
             });
         }
 
+        const overdueHtml = overdueRecords.map(renderTreatmentRow).join('');
+        const corentinHtml = corentinRecords.map(renderTreatmentRow).join('');
+        const treatmentHtml = underTreatmentRecords.map(renderTreatmentRow).join('');
+
         document.getElementById('healthyRecordsTableBody').innerHTML = healthyHtml || `<tr><td colspan="7" class="text-center">No healthy records.</td></tr>`;
         document.getElementById('analyticsHealthyRecordsTableBody').innerHTML = healthyHtml || `<tr><td colspan="7" class="text-center">No healthy records.</td></tr>`;
-        document.getElementById('treatmentRecordsTableBody').innerHTML = treatmentHtml || `<tr><td colspan="5" class="text-center">No treatment records.</td></tr>`;
+        document.getElementById('overdueRecordsTableBody').innerHTML = overdueHtml || `<tr><td colspan="5" class="text-center">No overdue records. Great job!</td></tr>`;
+        document.getElementById('corentinRecordsTableBody').innerHTML = corentinHtml || `<tr><td colspan="5" class="text-center">No 'Corentin' status records.</td></tr>`;
+        document.getElementById('treatmentRecordsTableBody').innerHTML = treatmentHtml || `<tr><td colspan="5" class="text-center">No 'Under Treatment' records.</td></tr>`;
 
         updateAnalytics();
         updateGrowthAnalytics();
@@ -133,6 +185,22 @@ function fetchAllRecords() {
         updateProfileView();
         checkTreatmentFollowUps();
         checkPreventativeCareReminders();
+    }, (error) => {
+        console.error("Fatal Error: Could not fetch main sheep records.", error);
+        const errorHtml = (cols) => `<tr><td colspan="${cols}" class="text-center text-danger">Error loading records. Please check your connection and refresh the page.</td></tr>`;
+
+        // Display error message in all dependent tables
+        document.getElementById('healthyRecordsTableBody').innerHTML = errorHtml(7);
+        document.getElementById('analyticsHealthyRecordsTableBody').innerHTML = errorHtml(7);
+        document.getElementById('overdueRecordsTableBody').innerHTML = errorHtml(5);
+        document.getElementById('corentinRecordsTableBody').innerHTML = errorHtml(5);
+        document.getElementById('treatmentRecordsTableBody').innerHTML = errorHtml(5);
+        document.getElementById('scheduleTableBody').innerHTML = errorHtml(7);
+        document.getElementById('weeklyTableBody').innerHTML = errorHtml(5);
+
+        // Reset analytics to a zero/error state
+        ['totalCount', 'healthyCount', 'sickCount', 'treatmentCount'].forEach(id => document.getElementById(id).textContent = '0');
+        if (healthStatusChart) { healthStatusChart.destroy(); healthStatusChart = null; }
     });
 }
 
@@ -143,15 +211,32 @@ function fetchSoldRecords() {
         const tableBody = document.getElementById('sheepSaledTableBody');
         soldRecords = [];
         let rowsHtml = '';
+        const monthlyTotals = {};
+
         if (snapshot.exists()) {
             snapshot.forEach(child => {
                 const record = { id: child.key, ...child.val() };
                 soldRecords.push(record);
+
+                // Calculate monthly totals
+                if (record.saleDate && record.salePrice) {
+                    const saleDate = new Date(record.saleDate + 'T00:00:00');
+                    if (!isNaN(saleDate.getTime())) {
+                        const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`; // e.g., "2025-08"
+                        const price = parseFloat(record.salePrice);
+                        if (!isNaN(price)) {
+                            monthlyTotals[monthKey] = (monthlyTotals[monthKey] || 0) + price;
+                        }
+                    }
+                }
             });
             soldRecords.reverse(); // Show newest first
             rowsHtml = soldRecords.map(renderSoldRow).join('');
         }
         tableBody.innerHTML = rowsHtml || `<tr><td colspan="7" class="text-center">No sold records.</td></tr>`;
+        
+        renderMonthlySalesSummary(monthlyTotals);
+
         updateProfileView();
     }, error => {
         console.error("Error fetching sold records:", error);
@@ -189,17 +274,50 @@ function renderSoldRow(record) {
         <td><strong>${record.sheepId}</strong></td>
         <td>${record.healthStatus}</td>
         <td>${formatDate(record.saleDate)}</td>
-        <td>${record.salePrice || 'N/A'}</td>
+        <td>${record.salePrice ? `₹${parseFloat(record.salePrice).toFixed(2)}` : 'N/A'}</td>
         <td>${record.saleBuyer || 'N/A'}</td>
         <td>${record.saleNotes || ''}</td>
         <td><button class="btn btn-sm btn-outline-danger js-delete-sold-record" data-record-id="${record.id}" data-sheep-id="${record.sheepId}" title="Permanently Delete"><i class="fas fa-trash"></i></button></td>
     </tr>`;
 }
 
+function renderMonthlySalesSummary(monthlyTotals) {
+    const container = document.getElementById('monthlySalesSummary');
+    if (!container) return;
+
+    if (Object.keys(monthlyTotals).length === 0) {
+        container.innerHTML = '<div class="col-12"><p class="text-muted">No sales data available to generate a monthly summary.</p></div>';
+        return;
+    }
+
+    // Sort months chronologically, newest first
+    const sortedMonths = Object.keys(monthlyTotals).sort().reverse();
+
+    let summaryHtml = '';
+    sortedMonths.forEach(monthKey => {
+        const total = monthlyTotals[monthKey];
+        const [year, month] = monthKey.split('-');
+        const monthName = new Date(year, month - 1, 1).toLocaleString('default', { month: 'long' });
+
+        summaryHtml += `
+            <div class="col-md-4 col-lg-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <h6 class="card-title text-muted">${monthName} ${year}</h6>
+                        <h4 class="card-text text-success">₹${total.toFixed(2)}</h4>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    container.innerHTML = summaryHtml;
+}
+
 function renderArchivedRow(record) {
     return `<tr>
         <td><strong>${record.sheepId}</strong></td>
-        <td><span class="status-sick">${record.healthStatus}</span></td>
+        <td><span class="${getStatusClass(record.healthStatus)}">${record.healthStatus}</span></td>
         <td>${formatDate(record.archiveDate)}</td>
         <td>${formatDate(record.dateRecorded)}</td>
         <td>${record.notes || ''}</td>
@@ -228,6 +346,7 @@ function renderTreatmentRow(record) {
     let lastUpdate = 'N/A';
     let followUpIndicator = '';
     let rowClass = ''; // For highlighting the entire row
+    let isOverdue = false;
 
     if (record.treatments) {
         const treatments = Object.values(record.treatments).sort((a, b) => new Date(b.treatmentDate) - new Date(a.treatmentDate));
@@ -236,32 +355,48 @@ function renderTreatmentRow(record) {
             lastUpdate = formatDate(latestTreatment.treatmentDate);
 
             if (latestTreatment.followUpDate) {
-                const followUpDate = new Date(latestTreatment.followUpDate + 'T00:00:00');
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+                // Use UTC for consistent date comparison
+                const parts = latestTreatment.followUpDate.split('-').map(p => parseInt(p, 10));
+                const followUpDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
 
-                if (followUpDate < today) {
-                    followUpIndicator = ` <span class="badge bg-danger" title="Follow-up was due on ${formatDate(latestTreatment.followUpDate)}">Overdue</span>`;
-                    rowClass = 'table-danger-light';
-                } else if (followUpDate.getTime() === today.getTime()) {
-                    followUpIndicator = ` <span class="badge bg-warning text-dark" title="Follow-up due today">Due Today</span>`;
-                    rowClass = 'table-warning-light';
+                const today = new Date();
+                const todayUTC = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+
+                if (!isNaN(followUpDate.getTime())) {
+                    const dayDiff = Math.ceil((followUpDate.getTime() - todayUTC.getTime()) / (1000 * 3600 * 24));
+
+                    if (dayDiff < 0) {
+                        followUpIndicator = ` <span class="badge bg-danger" title="Follow-up was due on ${formatDate(latestTreatment.followUpDate)}">Overdue</span>`;
+                        isOverdue = true;
+                        rowClass = 'table-danger-light';
+                    } else if (dayDiff === 0) {
+                        followUpIndicator = ` <span class="badge bg-warning text-dark" title="Follow-up due today">Due Today</span>`;
+                        rowClass = 'table-warning-light';
+                    } else {
+                        followUpIndicator = ` <span class="badge bg-info" title="Follow-up due in ${dayDiff} day(s) on ${formatDate(latestTreatment.followUpDate)}">Upcoming</span>`;
+                        rowClass = 'table-info-light';
+                    }
                 }
             }
         }
     }
+
+    const actionButtons = isOverdue
+        ? `<button class="btn btn-sm btn-warning js-manage-treatment" data-record-id="${record.id}" data-sheep-id="${record.sheepId}"><i class="fas fa-notes-medical"></i> Log Follow-up</button>
+           <button class="btn btn-sm btn-outline-primary js-edit-record" data-record-id="${record.id}"><i class="fas fa-edit"></i></button>
+           <button class="btn btn-sm btn-outline-danger js-delete-record" data-record-id="${record.id}" data-sheep-id="${record.sheepId}" title="Permanently Delete"><i class="fas fa-trash"></i></button>`
+        : `<button class="btn btn-sm btn-info js-manage-treatment" data-record-id="${record.id}" data-sheep-id="${record.sheepId}"><i class="fas fa-notes-medical"></i> Manage</button>
+           <button class="btn btn-sm btn-outline-primary js-edit-record" data-record-id="${record.id}"><i class="fas fa-edit"></i></button>
+           <button class="btn btn-sm btn-outline-success js-sale-record" data-record-id="${record.id}"><i class="fas fa-dollar-sign"></i> Sale</button>
+           <button class="btn btn-sm btn-outline-danger js-delete-record" data-record-id="${record.id}" data-sheep-id="${record.sheepId}" title="Permanently Delete"><i class="fas fa-trash"></i></button>
+           <button class="btn btn-sm btn-outline-secondary js-archive-record" data-record-id="${record.id}" title="Mark as Deceased/Archive"><i class="fas fa-archive"></i></button>`;
+
     return `<tr class="${rowClass}">
         <td><strong>${record.sheepId}</strong></td>
         <td><span class="${getStatusClass(record.healthStatus)}">${record.healthStatus}</span></td>
         <td>${formatDate(record.dateRecorded)}</td>
         <td>${lastUpdate}${followUpIndicator}</td>
-        <td>
-            <button class="btn btn-sm btn-info js-manage-treatment" data-record-id="${record.id}" data-sheep-id="${record.sheepId}"><i class="fas fa-notes-medical"></i> Manage</button>
-            <button class="btn btn-sm btn-outline-primary js-edit-record" data-record-id="${record.id}"><i class="fas fa-edit"></i></button>
-            <button class="btn btn-sm btn-outline-success js-sale-record" data-record-id="${record.id}"><i class="fas fa-dollar-sign"></i> Sale</button>
-            <button class="btn btn-sm btn-outline-danger js-delete-record" data-record-id="${record.id}" data-sheep-id="${record.sheepId}" title="Permanently Delete"><i class="fas fa-trash"></i></button>
-            <button class="btn btn-sm btn-outline-secondary js-archive-record" data-record-id="${record.id}" title="Mark as Deceased/Archive"><i class="fas fa-archive"></i></button>
-        </td>
+        <td>${actionButtons}</td>
     </tr>`;
 }
 
@@ -515,13 +650,13 @@ function updateScheduleView(filter = currentScheduleFilter) {
 function getScheduleStatus(lastDateStr, daysUntilDue, manualDueDateStr) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
+    
     let dueDate;
     if (manualDueDateStr) {
         dueDate = new Date(manualDueDateStr + 'T00:00:00');
     } else if (lastDateStr) {
         const lastDate = new Date(lastDateStr + 'T00:00:00');
-        dueDate = new Date(lastDate.getTime());
+        dueDate = new Date(lastDate.getTime()); 
         dueDate.setDate(dueDate.getDate() + daysUntilDue);
     } else {
         return { text: 'No Record', className: 'secondary', dayDiff: Infinity, isOverdue: false, isUpcoming: false };
@@ -731,7 +866,6 @@ function renderWeightDataTable(weightPoints, recordId, containerId = 'weightTabl
         container.innerHTML = '<p>No weight history recorded.</p>';
         return;
     }
-    const isProfile = containerId.startsWith('profile');
     let tableHtml = `<table class="table table-sm table-striped"><thead><tr><th>Date</th><th>Weight (kg)</th><th>Source</th><th>Actions</th></tr></thead><tbody>`;
     weightPoints.forEach(p => {
         let sourceText = '';
@@ -739,15 +873,15 @@ function renderWeightDataTable(weightPoints, recordId, containerId = 'weightTabl
         switch (p.source) {
             case 'initial':
                 sourceText = '<span class="badge bg-primary">Initial Record</span>';
-                actions = isProfile ? '' : `<button class="btn btn-sm btn-outline-primary js-edit-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="initial" title="Edit Initial Weight"><i class="fas fa-edit"></i></button>`;
+                actions = `<button class="btn btn-sm btn-outline-primary js-edit-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="initial" title="Edit Initial Weight"><i class="fas fa-edit"></i></button>`;
                 break;
             case 'log':
                 sourceText = '<span class="badge bg-info">Logged Entry</span>';
-                actions = isProfile ? '' : `<button class="btn btn-sm btn-outline-primary js-edit-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="log" title="Edit Entry"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-outline-danger js-delete-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="log" title="Delete Entry"><i class="fas fa-trash"></i></button>`;
+                actions = `<button class="btn btn-sm btn-outline-primary js-edit-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="log" title="Edit Entry"><i class="fas fa-edit"></i></button> <button class="btn btn-sm btn-outline-danger js-delete-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="log" title="Delete Entry"><i class="fas fa-trash"></i></button>`;
                 break;
             case 'treatment':
                 sourceText = '<span class="badge bg-secondary">From Treatment Log</span>';
-                actions = isProfile ? '' : `<button class="btn btn-sm btn-outline-danger js-delete-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="treatment" title="This is legacy data. Deleting it will remove the weight from the associated treatment log."><i class="fas fa-trash"></i></button>`;
+                actions = `<button class="btn btn-sm btn-outline-danger js-delete-weight" data-record-id="${recordId}" data-entry-id="${p.id}" data-source="treatment" title="This is legacy data. Deleting it will remove the weight from the associated treatment log."><i class="fas fa-trash"></i></button>`;
                 break;
         }
         tableHtml += `<tr><td>${formatDate(p.date.toISOString().split('T')[0])}</td><td>${p.weight.toFixed(1)}</td><td>${sourceText}</td><td>${actions}</td></tr>`;
@@ -769,16 +903,16 @@ function calculateAndDisplayWeightStats(allWeightPoints, containerId = 'weightSt
     const weightGain = lastPoint.weight - firstPoint.weight;
     const timeDiffDays = (lastPoint.date.getTime() - firstPoint.date.getTime()) / (1000 * 60 * 60 * 24);
 
-    let adg = 0;
+    let awg = 0;
     if (timeDiffDays > 0) {
-        adg = (weightGain / timeDiffDays) * 1000; // in grams
+        awg = (weightGain / timeDiffDays) * 7; // in kg/week
     }
 
     container.innerHTML = `
         <h5 class="card-title mb-3">Weight Statistics</h5>
         <div class="mb-3">
-            <p class="mb-0 text-muted">Average Daily Gain (ADG)</p>
-            <h3 class="text-success">${adg.toFixed(0)} g/day</h3>
+            <p class="mb-0 text-muted">Average Weekly Gain</p>
+            <h3 class="text-success">${awg.toFixed(2)} kg/week</h3>
         </div>
         <div class="mb-3">
             <p class="mb-0 text-muted">Net Weight Gain</p>
@@ -792,7 +926,7 @@ function calculateAndDisplayWeightStats(allWeightPoints, containerId = 'weightSt
     `;
 }
 
-function calculateADG(record) {
+function calculateAWG(record) {
     const allWeightPoints = gatherAllWeightData(record);
     if (allWeightPoints.length < 2) {
         return null;
@@ -805,7 +939,7 @@ function calculateADG(record) {
     const timeDiffDays = (lastPoint.date.getTime() - firstPoint.date.getTime()) / (1000 * 60 * 60 * 24);
 
     if (timeDiffDays > 0) {
-        return (weightGain / timeDiffDays) * 1000; // in grams
+        return (weightGain / timeDiffDays) * 7; // in kg/week
     }
     return null;
 }
@@ -816,24 +950,24 @@ function updateGrowthAnalytics() {
     fastestList.innerHTML = '<li class="list-group-item text-muted">Calculating...</li>';
     slowestList.innerHTML = '<li class="list-group-item text-muted">Calculating...</li>';
 
-    const sheepWithAdg = allRecords
-        .map(record => ({ sheepId: record.sheepId, adg: calculateADG(record) }))
-        .filter(item => item.adg !== null && !isNaN(item.adg));
+    const sheepWithAwg = allRecords
+        .map(record => ({ sheepId: record.sheepId, awg: calculateAWG(record) }))
+        .filter(item => item.awg !== null && !isNaN(item.awg));
 
-    if (sheepWithAdg.length === 0) {
-        const noDataHtml = '<li class="list-group-item text-muted">Not enough data for ADG calculation.</li>';
+    if (sheepWithAwg.length === 0) {
+        const noDataHtml = '<li class="list-group-item text-muted">Not enough data for weekly gain calculation.</li>';
         fastestList.innerHTML = noDataHtml;
         slowestList.innerHTML = noDataHtml;
         return;
     }
 
-    const sortedFastest = [...sheepWithAdg].sort((a, b) => b.adg - a.adg);
-    fastestList.innerHTML = sortedFastest.slice(0, 5).map(s => `<li class="list-group-item d-flex justify-content-between align-items-center">${s.sheepId} <span class="badge bg-success rounded-pill">${s.adg.toFixed(0)} g/day</span></li>`).join('') || '<li class="list-group-item text-muted">No sheep with calculated growth.</li>';
+    const sortedFastest = [...sheepWithAwg].sort((a, b) => b.awg - a.awg);
+    fastestList.innerHTML = sortedFastest.map(s => `<li class="list-group-item d-flex justify-content-between align-items-center">${s.sheepId} <span class="badge bg-success rounded-pill">${s.awg.toFixed(2)} kg/week</span></li>`).join('') || '<li class="list-group-item text-muted">No sheep with calculated growth.</li>';
 
-    const sortedSlowest = [...sheepWithAdg].sort((a, b) => a.adg - a.adg);
+    const sortedSlowest = [...sheepWithAwg].sort((a, b) => a.awg - a.awg);
     slowestList.innerHTML = sortedSlowest.map(s => {
-        const badgeClass = s.adg < 0 ? 'bg-danger' : 'bg-warning text-dark';
-        return `<li class="list-group-item d-flex justify-content-between align-items-center">${s.sheepId} <span class="badge ${badgeClass} rounded-pill">${s.adg.toFixed(0)} g/day</span></li>`;
+        const badgeClass = s.awg < 0 ? 'bg-danger' : 'bg-warning text-dark';
+        return `<li class="list-group-item d-flex justify-content-between align-items-center">${s.sheepId} <span class="badge ${badgeClass} rounded-pill">${s.awg.toFixed(2)} kg/week</span></li>`;
     }).join('') || '<li class="list-group-item text-muted">No sheep with calculated growth.</li>';
 }
 
@@ -1041,7 +1175,7 @@ function handleSaveTreatment(e) {
         }
 
         const record = allRecords.find(r => r.id === recordId);
-        if (record && record.healthStatus === 'Sick') {
+        if (record && record.healthStatus === 'Corentin') {
             mainRecordUpdates.healthStatus = 'Under Treatment';
         }
 
@@ -1205,38 +1339,42 @@ function renderProfileForSheep(recordId) {
     editBtn.style.display = isActiveRecord ? 'block' : 'none';
 
     document.getElementById('profileSheepId').textContent = record.sheepId;
-    document.getElementById('profileHealthStatus').innerHTML = `<span class="${getStatusClass(record.healthStatus)}">${record.healthStatus}</span>`;
+    document.getElementById('profileHealthStatus').innerHTML = `<span class="badge fs-6 ${getBootstrapStatusClass(record.healthStatus)}">${record.healthStatus}</span>`;
+    document.getElementById('profileAge').textContent = calculateAge(record.dateRecorded);
     document.getElementById('profileDateRecorded').textContent = formatDate(record.dateRecorded);
-    document.getElementById('profileInitialNotes').textContent = record.notes || 'N/A';
+    document.getElementById('profileInitialNotes').textContent = record.notes || 'No notes recorded.';
 
     const saleInfoCard = document.getElementById('profileSaleInfoCard');
     if (record.saleDate) {
         saleInfoCard.style.display = 'block';
         document.getElementById('profileSaleDate').textContent = formatDate(record.saleDate);
-        document.getElementById('profileSalePrice').textContent = record.salePrice ? `$${record.salePrice}` : 'N/A';
+        document.getElementById('profileSalePrice').textContent = record.salePrice ? `₹${parseFloat(record.salePrice).toFixed(2)}` : 'N/A';
         document.getElementById('profileSaleBuyer').textContent = record.saleBuyer || 'N/A';
         document.getElementById('profileSaleNotes').textContent = record.saleNotes || 'N/A';
     } else {
         saleInfoCard.style.display = 'none';
     }
 
+    // --- Preventative Care ---
     const dewormingStatus = getScheduleStatus(record.lastDewormingDate, 30, null);
     const vaccinationStatus = getScheduleStatus(record.lastVaccinationDate, 365, record.manualVaccinationDueDate);
     document.getElementById('profileDewormingStatus').innerHTML = renderScheduleStatusBadge(dewormingStatus, record.lastDewormingDate);
-    document.getElementById('profileDewormingNotes').textContent = record.lastDewormingNotes || 'N/A';
+    document.getElementById('profileDewormingNotes').textContent = record.lastDewormingNotes || 'No notes recorded.';
     document.getElementById('profileVaccinationStatus').innerHTML = renderScheduleStatusBadge(vaccinationStatus, record.lastVaccinationDate);
-    document.getElementById('profileVaccinationNotes').textContent = record.lastVaccinationNotes || 'N/A';
+    document.getElementById('profileVaccinationNotes').textContent = record.lastVaccinationNotes || 'No notes recorded.';
 
+    // --- Right Column Renders ---
     renderWeightProfile(record);
     renderTreatmentProfile(record);
     updateProfileNavButtons();
 }
 
 function renderWeightProfile(record) {
-    const displayArea = document.getElementById('profileWeightDisplayArea');
+    const chartContainer = document.getElementById('profileWeightChartContainer');
+
     const startDate = new Date(record.dateRecorded + 'T00:00:00');
     if (isNaN(startDate.getTime())) {
-        displayArea.innerHTML = '<div class="alert alert-warning">Cannot display weight chart due to invalid start date.</div>';
+        chartContainer.innerHTML = '<div class="alert alert-warning">Cannot display weight chart due to invalid start date.</div>';
         return;
     }
 
@@ -1247,9 +1385,11 @@ function renderWeightProfile(record) {
     const chartPoints = allWeightPoints.map(dp => ({ x: (dp.date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 7), y: dp.weight }));
 
     if (chartPoints.length < 1) {
-        document.getElementById('profileWeightChartContainer').innerHTML = '<div class="alert alert-info text-center h-100 d-flex align-items-center justify-content-center">No weight data to display.</div>';
+        chartContainer.innerHTML = '<div class="alert alert-info text-center h-100 d-flex align-items-center justify-content-center">No weight data to display.</div>';
         if (profileWeightChart) { profileWeightChart.destroy(); profileWeightChart = null; }
         return;
+    } else {
+        chartContainer.innerHTML = '<canvas id="profileWeightChart"></canvas>';
     }
 
     const ctx = document.getElementById('profileWeightChart').getContext('2d');
@@ -1262,7 +1402,7 @@ function renderWeightProfile(record) {
             responsive: true,
             maintainAspectRatio: false,
             scales: {
-                x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Weeks Since Record Start Date' } },
+                x: { type: 'linear', position: 'bottom', title: { display: true, text: 'Weeks Since Record Start Date' }, min: 0 },
                 y: { title: { display: true, text: 'Weight (kg)' }, beginAtZero: true }
             },
             plugins: { tooltip: { callbacks: {
@@ -1327,7 +1467,8 @@ function openWeightModal(recordId, entryId = null, source = 'log') {
 
     if (entryId) {
         document.getElementById('weightModalTitle').textContent = 'Edit Weight Entry';
-        const record = allRecords.find(r => r.id === recordId);
+        const combinedRecords = [...allRecords, ...soldRecords, ...archivedRecords];
+        const record = combinedRecords.find(r => r.id === recordId);
         if (!record) return;
 
         let dataPoint;
@@ -1360,12 +1501,25 @@ function handleSaveWeight(e) {
         return alert('Please provide a valid date and weight.');
     }
 
+    let recordPath;
+    if (allRecords.some(r => r.id === recordId)) {
+        recordPath = `sheepHealthRecords/${recordId}`;
+    } else if (soldRecords.some(r => r.id === recordId)) {
+        recordPath = `sheepSaledRecords/${recordId}`;
+    } else if (archivedRecords.some(r => r.id === recordId)) {
+        recordPath = `sheepArchivedRecords/${recordId}`;
+    }
+
+    if (!recordPath) {
+        return alert('Could not find the record to update.');
+    }
+
     let promise;
     if (source === 'initial') {
-        promise = update(ref(db, `sheepHealthRecords/${recordId}`), { weight: weight, dateRecorded: date });
+        promise = update(ref(db, recordPath), { weight: weight, dateRecorded: date });
     } else {
         const data = { date, weight };
-        const path = ref(db, `sheepHealthRecords/${recordId}/weights`);
+        const path = ref(db, `${recordPath}/weights`);
         promise = entryId ? update(child(path, entryId), data) : push(path, data);
     }
 
@@ -1377,15 +1531,27 @@ function handleSaveWeight(e) {
 function deleteWeightEntry(recordId, entryId, source) {
     if (!confirm('Are you sure you want to delete this weight entry?')) return;
 
-    let promise;
-    if (source === 'initial') {
-        promise = remove(ref(db, `sheepHealthRecords/${recordId}/weight`));
-    } else if (source === 'log') {
-        promise = remove(ref(db, `sheepHealthRecords/${recordId}/weights/${entryId}`));
-    } else if (source === 'treatment') {
-        promise = remove(ref(db, `sheepHealthRecords/${recordId}/treatments/${entryId}/weight`));
+    let recordPath;
+    if (allRecords.some(r => r.id === recordId)) {
+        recordPath = `sheepHealthRecords/${recordId}`;
+    } else if (soldRecords.some(r => r.id === recordId)) {
+        recordPath = `sheepSaledRecords/${recordId}`;
+    } else if (archivedRecords.some(r => r.id === recordId)) {
+        recordPath = `sheepArchivedRecords/${recordId}`;
     }
 
+    if (!recordPath) {
+        return alert('Could not find the record to update.');
+    }
+
+    let promise;
+    if (source === 'initial') {
+        promise = remove(ref(db, `${recordPath}/weight`));
+    } else if (source === 'log') {
+        promise = remove(ref(db, `${recordPath}/weights/${entryId}`));
+    } else if (source === 'treatment') {
+        promise = remove(ref(db, `${recordPath}/treatments/${entryId}/weight`));
+    }
     if (promise) {
         promise.catch(err => alert('Error deleting entry: ' + err.message));
     }
@@ -1396,18 +1562,18 @@ function deleteWeightEntry(recordId, entryId, source) {
 function updateAnalytics() {
     const total = allRecords.length;
     const healthy = allRecords.filter(r => r.healthStatus === 'Healthy' || r.healthStatus === 'Recovering').length;
-    const sick = allRecords.filter(r => r.healthStatus === 'Sick').length;
+    const corentin = allRecords.filter(r => r.healthStatus === 'Corentin').length;
     const treatment = allRecords.filter(r => r.healthStatus === 'Under Treatment').length;
 
     document.getElementById('totalCount').textContent = total;
     document.getElementById('healthyCount').textContent = healthy;
-    document.getElementById('sickCount').textContent = sick;
+    document.getElementById('sickCount').textContent = corentin;
     document.getElementById('treatmentCount').textContent = treatment;
 
-    renderAnalyticsChart(healthy, sick, treatment);
+    renderAnalyticsChart(healthy, corentin, treatment);
 }
 
-function renderAnalyticsChart(healthy, sick, treatment) {
+function renderAnalyticsChart(healthy, corentin, treatment) {
     const ctx = document.getElementById('healthStatusChart').getContext('2d');
 
     if (healthStatusChart) {
@@ -1417,10 +1583,10 @@ function renderAnalyticsChart(healthy, sick, treatment) {
     healthStatusChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['Healthy/Recovering', 'Sick', 'Under Treatment'],
+            labels: ['Healthy/Recovering', 'Corentin', 'Under Treatment'],
             datasets: [{
                 label: 'Sheep Status',
-                data: [healthy, sick, treatment],
+                data: [healthy, corentin, treatment],
                 backgroundColor: [
                     'rgba(40, 167, 69, 0.8)',
                     'rgba(220, 53, 69, 0.8)',
@@ -1441,9 +1607,43 @@ function renderAnalyticsChart(healthy, sick, treatment) {
 
 // --- UTILITY FUNCTIONS ---
 
+function getBootstrapStatusClass(status) {
+    if (status === 'Healthy' || status === 'Recovering') return 'bg-success';
+    if (status === 'Corentin' || status === 'Deceased') return 'bg-danger';
+    if (status === 'Under Treatment') return 'bg-warning text-dark';
+    return 'bg-secondary';
+}
+
+function calculateAge(startDateString) {
+    if (!startDateString) return 'N/A';
+    const startDate = new Date(startDateString + 'T00:00:00');
+    if (isNaN(startDate.getTime())) return 'N/A';
+
+    const today = new Date();
+    const birthDate = new Date(startDate);
+
+    let years = today.getFullYear() - birthDate.getFullYear();
+    let months = today.getMonth() - birthDate.getMonth();
+
+    if (months < 0 || (months === 0 && today.getDate() < birthDate.getDate())) {
+        years--;
+        months = (months + 12) % 12;
+    }
+
+    if (years === 0 && months === 0) {
+        const days = Math.floor((today - birthDate) / (1000 * 60 * 60 * 24));
+        return `${days} day${days !== 1 ? 's' : ''}`;
+    }
+
+    let ageString = '';
+    if (years > 0) ageString += `${years} year${years > 1 ? 's' : ''}`;
+    if (months > 0) ageString += ` ${months} month${months > 1 ? 's' : ''}`;
+    return ageString.trim();
+}
+
 function getStatusClass(status) {
     if (status === 'Healthy' || status === 'Recovering') return 'status-healthy';
-    if (status === 'Sick' || status === 'Deceased') return 'status-sick';
+    if (status === 'Corentin' || status === 'Deceased') return 'status-corentin';
     if (status === 'Under Treatment') return 'status-treatment';
     return '';
 }
@@ -1484,14 +1684,35 @@ function filterProfileSelector() {
     updateProfileNavButtons();
 }
 
-function exportTreatmentData() {
-    const recordsToExport = allRecords.filter(r => r.healthStatus === 'Sick' || r.healthStatus === 'Under Treatment');
+function exportCorentinData() {
+    const recordsToExport = allRecords.filter(r => r.healthStatus === 'Corentin');
     if (recordsToExport.length === 0) {
-        alert('No sick or under treatment records to export.');
+        alert('No Corentin records to export.');
         return;
     }
     const csv = convertToCSV(recordsToExport);
-    downloadCSV(csv, 'treatment_sheep_records.csv');
+    downloadCSV(csv, 'corentin_sheep_records.csv');
+}
+
+function exportUnderTreatmentData() {
+    const recordsToExport = allRecords.filter(r => r.healthStatus === 'Under Treatment');
+    if (recordsToExport.length === 0) {
+        alert('No Under Treatment records to export.');
+        return;
+    }
+    const csv = convertToCSV(recordsToExport);
+    downloadCSV(csv, 'under_treatment_sheep_records.csv');
+}
+
+function exportOverdueData() {
+    // Re-calculate overdue records for export to ensure it's current
+    const recordsToExport = allRecords.filter(r => (r.healthStatus === 'Corentin' || r.healthStatus === 'Under Treatment') && getFollowUpStatus(r) === 'overdue');
+    if (recordsToExport.length === 0) {
+        alert('No overdue records to export.');
+        return;
+    }
+    const csv = convertToCSV(recordsToExport);
+    downloadCSV(csv, 'overdue_sheep_records.csv');
 }
 
 function exportSoldData() {
@@ -1608,7 +1829,9 @@ function addEventListeners() {
             if (selectedId) openEditModal(selectedId);
         }
         else if (target.closest('.js-export-healthy')) exportData();
-        else if (target.closest('.js-export-treatment')) exportTreatmentData();
+        else if (target.closest('.js-export-corentin')) exportCorentinData();
+        else if (target.closest('.js-export-under-treatment')) exportUnderTreatmentData();
+        else if (target.closest('.js-export-overdue')) exportOverdueData();
         else if (target.closest('.js-export-sold')) exportSoldData();
         else if (target.closest('.notification-item')) {
             e.preventDefault();
