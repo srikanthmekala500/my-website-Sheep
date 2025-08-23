@@ -962,27 +962,27 @@ function updateGrowthAnalytics() {
 
 // --- FORM & MODAL HANDLERS ---
 
-function handleAddRecord(e) {
-    e.preventDefault();
-    const newRecord = {
-        sheepId: document.getElementById('sheepId').value.trim(),
-        healthStatus: document.getElementById('healthStatus').value,
-        dateRecorded: document.getElementById('dateRecorded').value,
-        notes: document.getElementById('notes').value.trim(),
-        weight: document.getElementById('weight').value || null,
-        temperature: document.getElementById('temperature').value || null,
-    };
-    if (!newRecord.sheepId || !newRecord.dateRecorded) return alert("Sheep ID and Date are required.");
-    const isDuplicate = allRecords.some(record => record.sheepId.toLowerCase() === newRecord.sheepId.toLowerCase());
-    if (isDuplicate) {
-        alert(`Error: A sheep with ID "${newRecord.sheepId}" already exists in the active records. Please use a unique ID.`);
-        return;
-    }
-    push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
-        e.target.reset();
-        document.getElementById('dateRecorded').valueAsDate = new Date();
-    });
-}
+// function handleAddRecord(e) {
+//     e.preventDefault();
+//     const newRecord = {
+//         sheepId: document.getElementById('sheepId').value.trim(),
+//         healthStatus: document.getElementById('healthStatus').value,
+//         dateRecorded: document.getElementById('dateRecorded').value,
+//         notes: document.getElementById('notes').value.trim(),
+//         weight: document.getElementById('weight').value || null,
+//         temperature: document.getElementById('temperature').value || null,
+//     };
+//     if (!newRecord.sheepId || !newRecord.dateRecorded) return alert("Sheep ID and Date are required.");
+//     const isDuplicate = allRecords.some(record => record.sheepId.toLowerCase() === newRecord.sheepId.toLowerCase());
+//     if (isDuplicate) {
+//         alert(`Error: A sheep with ID "${newRecord.sheepId}" already exists in the active records. Please use a unique ID.`);
+//         return;
+//     }
+//     push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
+//         e.target.reset();
+//         document.getElementById('dateRecorded').valueAsDate = new Date();
+//     });
+// }
 
 function openEditModal(recordId) {
     const record = allRecords.find(r => r.id === recordId);
@@ -1670,4 +1670,5 @@ function downloadCSV(csv, filename) {
         document.body.removeChild(link);
     }
 }
+
 
