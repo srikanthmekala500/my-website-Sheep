@@ -21,6 +21,7 @@ const auth = getAuth(app);
 // --- STATE VARIABLES ---
 let allRecords = [];
 let soldRecords = [];
+let archivedRecords = [];
 let editSheepModal, saleSheepModal, treatmentLogModal, weightEntryModal, batchTreatmentModal;
 let healthStatusChart, weightChart, profileWeightChart;
 let currentWeeklyFilter = 'all';
@@ -282,7 +283,7 @@ function fetchArchivedRecords() {
     const archivedRef = orderByChild(ref(db, "sheepArchivedRecords"), "archiveDate");
     onValue(archivedRef, snapshot => {
         const tableBody = document.getElementById('archivedRecordsTableBody');
-        let archivedRecords = [];
+        archivedRecords = [];
         let rowsHtml = '';
         if (snapshot.exists()) {
             snapshot.forEach(child => {
@@ -293,6 +294,7 @@ function fetchArchivedRecords() {
             rowsHtml = archivedRecords.map(renderArchivedRow).join('');
         }
         tableBody.innerHTML = rowsHtml || `<tr><td colspan="6" class="text-center">No archived records.</td></tr>`;
+        updateProfileView();
     });
 }
 
@@ -1273,6 +1275,19 @@ function updateProfileView() {
         selector.appendChild(soldGroup);
     }
 
+    if (archivedRecords.length > 0) {
+        const archivedGroup = document.createElement('optgroup');
+        archivedGroup.label = 'Archived Sheep';
+        const sortedArchived = [...archivedRecords].sort((a, b) => a.sheepId.localeCompare(b.sheepId, undefined, { numeric: true }));
+        sortedArchived.forEach(record => {
+            const option = document.createElement('option');
+            option.value = record.id;
+            option.textContent = record.sheepId;
+            archivedGroup.appendChild(option);
+        });
+        selector.appendChild(archivedGroup);
+    }
+
     selector.value = currentSelection || "";
 
     if (!currentSelection) {
@@ -1288,7 +1303,7 @@ function renderProfileForSheep(recordId) {
     const noDataMessage = document.getElementById('noProfileData');
     const editBtn = document.getElementById('profileEditBtn');
 
-    const combinedRecords = [...allRecords, ...soldRecords];
+    const combinedRecords = [...allRecords, ...soldRecords, ...archivedRecords];
     const record = combinedRecords.find(r => r.id === recordId);
 
     if (!record) {
