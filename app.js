@@ -63,7 +63,8 @@ function cacheDOMElements() {
         'analyticsSearchInput', 'analyticsHealthyRecordsTableBody', 'exportHealthyBtn', 'exportTreatmentBtn', 'exportAnalyticsBtn',
         'editSheepModal', 'editSheepForm', 'saleSheepModal', 'saleSheepForm', 'treatmentLogModal', 'addTreatmentForm',
         'resetTreatmentFormBtn', 'treatmentLogTbody', 'modalSheepId', 'currentSheepRecordId', 'treatmentEntryId',
-        'weightEntryModal', 'weightEntryForm', 'batchTreatmentModal', 'batchTreatmentForm', 'batchCount', 'batchTreatmentDate'
+        'weightEntryModal', 'weightEntryForm', 'batchTreatmentModal', 'batchTreatmentForm', 'batchCount', 'batchTreatmentDate',
+        'appToast', 'toastTitle', 'toastBody'
     ];
     ids.forEach(id => {
         DOMElements[id] = document.getElementById(id);
@@ -186,6 +187,7 @@ function initializeAppUI() {
     state.modals.treatment = new bootstrap.Modal(DOMElements.treatmentLogModal);
     state.modals.weight = new bootstrap.Modal(DOMElements.weightEntryModal);
     state.modals.batch = new bootstrap.Modal(DOMElements.batchTreatmentModal);
+    state.toast = new bootstrap.Toast(DOMElements.appToast);
 
     DOMElements.dateRecorded.valueAsDate = new Date();
     
@@ -236,6 +238,26 @@ function formatDate(dateString) {
     } catch (e) {
         return dateString;
     }
+}
+
+/**
+ * Shows a toast notification.
+ * @param {string} title The title of the toast.
+ * @param {string} body The message body of the toast.
+ * @param {string} type 'success', 'danger', or 'warning' to control the color.
+ */
+function showToast(title, body, type = 'success') {
+    const toastHeader = DOMElements.appToast.querySelector('.toast-header');
+    
+    // Remove old color classes
+    toastHeader.classList.remove('bg-success', 'bg-danger', 'bg-warning', 'text-white');
+
+    // Add new color class
+    toastHeader.classList.add(`bg-${type}`, 'text-white');
+
+    DOMElements.toastTitle.textContent = title;
+    DOMElements.toastBody.textContent = body;
+    state.toast.show();
 }
 
 function getStatusClass(status) {
@@ -553,7 +575,7 @@ function renderNotificationList(notifications, listEl, badgeEl, emptyText) {
 function viewRecordFromNotification(recordId) {
     const record = state.allRecords.find(r => r.id === recordId);
     if (!record) {
-        alert('Could not find the record. It may have been moved or deleted.');
+        showToast('Error', 'Could not find the record. It may have been moved or deleted.', 'danger');
         return;
     }
     openTreatmentLog(record.id, record.sheepId);
@@ -1031,20 +1053,23 @@ async function handleAddRecord(e) {
         weight: DOMElements.weight.value || null,
         temperature: DOMElements.temperature.value || null,
     };
-    if(!newRecord.sheepId || !newRecord.dateRecorded) return alert("Sheep ID and Date are required.");
+    if(!newRecord.sheepId || !newRecord.dateRecorded) {
+        return showToast('Validation Error', 'Sheep ID and Date are required.', 'warning');
+    }
     
     const isDuplicate = state.allRecords.some(record => record.sheepId.toLowerCase() === newRecord.sheepId.toLowerCase());
     if (isDuplicate) {
-        alert(`Error: A sheep with ID "${newRecord.sheepId}" already exists in the active records. Please use a unique ID.`);
+        showToast('Duplicate Error', `A sheep with ID "${newRecord.sheepId}" already exists. Please use a unique ID.`, 'danger');
         return;
     }
 
     try {
         await push(ref(db, 'sheepHealthRecords'), newRecord);
+        showToast('Success', `Record for sheep "${newRecord.sheepId}" was added successfully.`, 'success');
         e.target.reset();
         DOMElements.dateRecorded.valueAsDate = new Date();
     } catch (error) {
-        alert("Error adding record: " + error.message);
+        showToast('Database Error', "Error adding record: " + error.message, 'danger');
     }
 }
 
@@ -1093,15 +1118,16 @@ async function handleUpdateRecord(e) {
         record => record.id !== recordId && record.sheepId.toLowerCase() === updatedData.sheepId.toLowerCase()
     );
     if (isDuplicate) {
-        alert(`Error: Another sheep with ID "${updatedData.sheepId}" already exists. Please use a unique ID.`);
+        showToast('Duplicate Error', `Another sheep with ID "${updatedData.sheepId}" already exists. Please use a unique ID.`, 'danger');
         return;
     }
 
     try {
         await update(ref(db, `sheepHealthRecords/${recordId}`), updatedData);
+        showToast('Success', `Record for sheep "${updatedData.sheepId}" was updated.`, 'success');
         state.modals.edit.hide();
     } catch (error) {
-        alert("Error updating record: " + error.message);
+        showToast('Database Error', "Error updating record: " + error.message, 'danger');
     }
 }
 
@@ -1109,8 +1135,9 @@ async function deleteRecord(recordId, sheepId) {
     if (confirm(`Are you sure you want to PERMANENTLY DELETE sheep "${sheepId}" and all its history? This action cannot be undone.`)) {
         try {
             await remove(ref(db, `sheepHealthRecords/${recordId}`));
+            showToast('Deleted', `Record for sheep "${sheepId}" has been permanently deleted.`, 'success');
         } catch (error) {
-            alert("An error occurred while deleting the record: " + error.message);
+            showToast('Database Error', "An error occurred while deleting the record: " + error.message, 'danger');
         }
     }
 }
@@ -1118,7 +1145,7 @@ async function deleteRecord(recordId, sheepId) {
 async function archiveRecord(recordId) {
     if (confirm('Are you sure you want to mark this sheep as deceased and move it to the archive?')) {
         const recordToArchive = state.allRecords.find(r => r.id === recordId);
-        if (!recordToArchive) return alert("Record not found.");
+        if (!recordToArchive) return showToast('Error', 'Record not found.', 'danger');
 
         const archivedRecord = {
             ...recordToArchive,
@@ -1134,8 +1161,9 @@ async function archiveRecord(recordId) {
 
         try {
             await update(ref(db), updates);
+            showToast('Archived', `Record for sheep "${recordToArchive.sheepId}" has been moved to the archive.`, 'success');
         } catch (error) {
-            alert("Archiving failed: " + error.message);
+            showToast('Database Error', "Archiving failed: " + error.message, 'danger');
         }
     }
 }
@@ -1144,8 +1172,9 @@ async function deleteSoldRecord(recordId, sheepId) {
     if (confirm(`Are you sure you want to PERMANENTLY DELETE the sale record for sheep "${sheepId}"?`)) {
         try {
             await remove(ref(db, `sheepSaledRecords/${recordId}`));
+            showToast('Deleted', `Sale record for sheep "${sheepId}" has been deleted.`, 'success');
         } catch (error) {
-            alert("Error deleting sold record: " + error.message);
+            showToast('Database Error', "Error deleting sold record: " + error.message, 'danger');
         }
     }
 }
@@ -1154,8 +1183,9 @@ async function deleteArchivedRecord(recordId, sheepId) {
     if (confirm(`Are you sure you want to PERMANENTLY DELETE the archived record for sheep "${sheepId}"?`)) {
         try {
             await remove(ref(db, `sheepArchivedRecords/${recordId}`));
+            showToast('Deleted', `Archived record for sheep "${sheepId}" has been deleted.`, 'success');
         } catch (error) {
-            alert("Error deleting archived record: " + error.message);
+            showToast('Database Error', "Error deleting archived record: " + error.message, 'danger');
         }
     }
 }
@@ -1173,7 +1203,7 @@ async function handleSaleSubmit(e) {
     const form = e.target;
     const recordId = form.querySelector('#saleRecordId').value;
     const recordToSell = state.allRecords.find(r => r.id === recordId);
-    if (!recordToSell) return alert("Record not found.");
+    if (!recordToSell) return showToast('Error', 'Record not found.', 'danger');
     
     const soldRecord = {
         ...recordToSell,
@@ -1191,9 +1221,10 @@ async function handleSaleSubmit(e) {
 
     try {
         await update(ref(db), updates);
+        showToast('Success', `Sheep "${soldRecord.sheepId}" has been marked as sold.`, 'success');
         state.modals.sale.hide();
     } catch (error) {
-        alert("Sale operation failed: " + error.message);
+        showToast('Database Error', "Sale operation failed: " + error.message, 'danger');
     }
 }
 
