@@ -1670,63 +1670,7 @@ function downloadCSV(csv, filename) {
         document.body.removeChild(link);
     }
 }
-////////////////////////////////////
- // function archiveRecord(recordId) {
- //            if (confirm('Are you sure you want to mark this sheep as deceased and move it to the archive? This action moves the record and cannot be easily undone.')) {
- //                const recordToArchive = allRecords.find(r => r.id === recordId);
- //                if (!recordToArchive) return alert("Record not found.");
 
- //                const archivedRecord = {
- //                    ...recordToArchive,
- //                    healthStatus: 'Deceased',
- //                    archiveDate: new Date().toISOString().split('T')[0] // YYYY-MM-DD
- //                };
- //                delete archivedRecord.id;
-
- //                db.ref('sheepArchivedRecords').push(archivedRecord).then(() => {
- //                    db.ref(`sheepHealthRecords/${recordId}`).remove();
- //                });
- //            }
  //        }
 
- //        function deleteSoldRecord(recordId, sheepId) {
- //            if (confirm(`Are you sure you want to PERMANENTLY DELETE the sale record for sheep "${sheepId}"? This action cannot be undone.`)) {
- //                db.ref(`sheepSaledRecords/${recordId}`).remove();
- //            }
- //        }
-
- //        function deleteArchivedRecord(recordId, sheepId) {
- //            if (confirm(`Are you sure you want to PERMANENTLY DELETE the archived record for sheep "${sheepId}"? This action cannot be undone.`)) {
- //                db.ref(`sheepArchivedRecords/${recordId}`).remove();
- //            }
- //        }
-
- //        function openSaleModal(recordId) {
- //            document.getElementById('saleRecordId').value = recordId;
- //            document.getElementById('saleDate').valueAsDate = new Date();
- //            saleSheepModal.show();
- //        }
-        
- //        function handleSaleSubmit(e) {
- //            e.preventDefault();
- //            const recordId = document.getElementById('saleRecordId').value;
- //            const recordToSell = allRecords.find(r => r.id === recordId);
- //            if (!recordToSell) return alert("Record not found.");
-            
- //            const soldRecord = {
- //                ...recordToSell,
- //                saleDate: document.getElementById('saleDate').value,
- //                salePrice: document.getElementById('salePrice').value,
- //                saleBuyer: document.getElementById('saleBuyer').value.trim(),
- //                saleNotes: document.getElementById('saleNotes').value.trim(),
- //            };
- //            delete soldRecord.id; // Clean up the Firebase key
-
- //            db.ref('sheepSaledRecords').push(soldRecord).then(() => {
- //                db.ref(`sheepHealthRecords/${recordId}`).remove().then(() => {
- //                    saleSheepModal.hide();
- //                    e.target.reset();
- //                });
- //            });
- //        }
 
