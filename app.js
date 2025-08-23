@@ -54,124 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Initializes the main application UI, modals, and event listeners.
- */
-function initializeUI() {
-    // Initialize Bootstrap Modals
-    editSheepModal = new bootstrap.Modal(document.getElementById('editSheepModal'));
-    saleSheepModal = new bootstrap.Modal(document.getElementById('saleSheepModal'));
-    treatmentLogModal = new bootstrap.Modal(document.getElementById('treatmentLogModal'));
-    weightEntryModal = new bootstrap.Modal(document.getElementById('weightEntryModal'));
-    batchTreatmentModal = new bootstrap.Modal(document.getElementById('batchTreatmentModal'));
-
-    // Set default date for new records
-    document.getElementById('dateRecorded').valueAsDate = new Date();
-
-    addEventListeners();
-
-    // Initial data fetch
-    fetchAllRecords();
-    fetchSoldRecords();
-    fetchArchivedRecords();
-}
-
-/**
- * Centralized function to add all necessary event listeners for the app.
- */
-function addEventListeners() {
-    // --- Main App Click Handler (Event Delegation) ---
-    mainApp.addEventListener('click', (e) => {
-        const target = e.target;
-        const recordBtn = target.closest('[data-record-id]');
-        const recordId = recordBtn?.dataset.recordId;
-        const sheepId = recordBtn?.dataset.sheepId;
-
-        // Table row actions
-        if (target.closest('.js-edit-record')) openEditModal(recordId);
-        else if (target.closest('.js-sale-record')) openSaleModal(recordId);
-        else if (target.closest('.js-delete-record')) deleteRecord(recordId, sheepId);
-        else if (target.closest('.js-archive-record')) archiveRecord(recordId);
-        else if (target.closest('.js-manage-treatment')) openTreatmentLog(recordId, sheepId);
-        else if (target.closest('.js-delete-sold-record')) deleteSoldRecord(recordId, sheepId);
-        else if (target.closest('.js-delete-archived-record')) deleteArchivedRecord(recordId, sheepId);
-        else if (target.closest('.js-edit-treatment')) editTreatmentEntry(recordId, recordBtn.dataset.entryId);
-        else if (target.closest('.js-delete-treatment')) deleteTreatmentEntry(recordId, recordBtn.dataset.entryId);
-        else if (target.closest('.js-edit-weight')) openWeightModal(recordId, recordBtn.dataset.entryId, recordBtn.dataset.source);
-        else if (target.closest('.js-delete-weight')) deleteWeightEntry(recordId, recordBtn.dataset.entryId, recordBtn.dataset.source);
-        
-        // Other buttons
-        else if (target.closest('#signOutBtn')) signOut(auth);
-        else if (target.closest('#sidebarToggleBtn')) document.querySelector('.dashboard-sidebar').classList.toggle('visible');
-        else if (target.closest('#batchLogBtn')) openBatchLogModal();
-        else if (target.closest('.js-reset-treatment-form')) resetTreatmentForm();
-        else if (target.closest('#prevSheepBtn')) navigateProfile(-1);
-        else if (target.closest('#nextSheepBtn')) navigateProfile(1);
-        else if (target.closest('#profileEditBtn')) {
-            const selectedId = document.getElementById('profileSheepSelector').value;
-            if (selectedId) openEditModal(selectedId);
-        }
-        else if (target.closest('.js-export-healthy')) exportData();
-        else if (target.closest('.js-export-treatment')) exportTreatmentData();
-        else if (target.closest('.js-export-sold')) exportSoldData();
-        else if (target.closest('.notification-item')) {
-            e.preventDefault();
-            viewRecordFromNotification(target.closest('.notification-item').dataset.recordId);
-        }
-    });
-
-    // --- Navigation ---
-    document.querySelector('.dashboard-sidebar .nav').addEventListener('click', e => {
-        const link = e.target.closest('a.nav-link[data-section]');
-        if (link) {
-            e.preventDefault();
-            showSection(link.dataset.section);
-        }
-    });
-
-    // --- Form Submissions ---
-    // document.getElementById('sheepHealthForm').addEventListener('submit', handleAddRecord);
-    document.getElementById('editSheepForm').addEventListener('submit', handleUpdateRecord);
-    document.getElementById('saleSheepForm').addEventListener('submit', handleSaleSubmit);
-    document.getElementById('addTreatmentForm').addEventListener('submit', handleSaveTreatment);
-    document.getElementById('batchTreatmentForm').addEventListener('submit', handleBatchSaveTreatment);
-    document.getElementById('weightEntryForm').addEventListener('submit', handleSaveWeight);
-
-    // --- Filters & Search ---
-    document.getElementById('scheduleFilterButtons').addEventListener('click', e => {
-        if (e.target.matches('button')) updateScheduleView(e.target.dataset.filter);
-    });
-    document.getElementById('weeklyFilterButtons').addEventListener('click', e => {
-        if (e.target.matches('button')) updateWeeklyTrackingView(e.target.dataset.filter);
-    });
-    mainApp.addEventListener('keyup', e => {
-        if (e.target.matches('input[data-table-body-id]')) {
-            filterTableBySheepId(e.target, e.target.dataset.tableBodyId);
-        } else if (e.target.matches('#profileSearchInput')) {
-            filterProfileSelector();
-        }
-    });
-
-    // --- Dynamic UI Listeners ---
-    document.getElementById('scheduleTableBody').addEventListener('change', e => {
-        if (e.target.matches('.sheep-select-checkbox')) updateBatchLogUI();
-    });
-    document.getElementById('selectAllSchedule').addEventListener('change', e => {
-        document.querySelectorAll('#scheduleTableBody .sheep-select-checkbox').forEach(cb => cb.checked = e.target.checked);
-        updateBatchLogUI();
-    });
-    document.getElementById('profileSheepSelector').addEventListener('change', e => {
-        if (e.target.value) renderProfileForSheep(e.target.value);
-    });
-    document.getElementById('weightSheepSelector').addEventListener('change', e => {
-        if (e.target.value) renderWeightChartForSheep(e.target.value);
-    });
-    document.getElementById('addWeightBtn').addEventListener('click', () => {
-        const recordId = document.getElementById('weightSheepSelector').value;
-        if (recordId) openWeightModal(recordId);
-    });
-}
-
-/**
  * Formats a date string (YYYY-MM-DD) into DD/MM/YY.
  * @param {string} dateString - The date string to format.
  * @returns {string} The formatted date or the original string if invalid.
@@ -962,27 +844,27 @@ function updateGrowthAnalytics() {
 
 // --- FORM & MODAL HANDLERS ---
 
-// function handleAddRecord(e) {
-//     e.preventDefault();
-//     const newRecord = {
-//         sheepId: document.getElementById('sheepId').value.trim(),
-//         healthStatus: document.getElementById('healthStatus').value,
-//         dateRecorded: document.getElementById('dateRecorded').value,
-//         notes: document.getElementById('notes').value.trim(),
-//         weight: document.getElementById('weight').value || null,
-//         temperature: document.getElementById('temperature').value || null,
-//     };
-//     if (!newRecord.sheepId || !newRecord.dateRecorded) return alert("Sheep ID and Date are required.");
-//     const isDuplicate = allRecords.some(record => record.sheepId.toLowerCase() === newRecord.sheepId.toLowerCase());
-//     if (isDuplicate) {
-//         alert(`Error: A sheep with ID "${newRecord.sheepId}" already exists in the active records. Please use a unique ID.`);
-//         return;
-//     }
-//     push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
-//         e.target.reset();
-//         document.getElementById('dateRecorded').valueAsDate = new Date();
-//     });
-// }
+function handleAddRecord(e) {
+    e.preventDefault();
+    const newRecord = {
+        sheepId: document.getElementById('sheepId').value.trim(),
+        healthStatus: document.getElementById('healthStatus').value,
+        dateRecorded: document.getElementById('dateRecorded').value,
+        notes: document.getElementById('notes').value.trim(),
+        weight: document.getElementById('weight').value || null,
+        temperature: document.getElementById('temperature').value || null,
+    };
+    if (!newRecord.sheepId || !newRecord.dateRecorded) return alert("Sheep ID and Date are required.");
+    const isDuplicate = allRecords.some(record => record.sheepId.toLowerCase() === newRecord.sheepId.toLowerCase());
+    if (isDuplicate) {
+        alert(`Error: A sheep with ID "${newRecord.sheepId}" already exists in the active records. Please use a unique ID.`);
+        return;
+    }
+    push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
+        e.target.reset();
+        document.getElementById('dateRecorded').valueAsDate = new Date();
+    });
+}
 
 function openEditModal(recordId) {
     const record = allRecords.find(r => r.id === recordId);
@@ -1671,4 +1553,122 @@ function downloadCSV(csv, filename) {
     }
 }
 
+// --- APP INITIALIZATION ---
 
+/**
+ * Initializes the main application UI, modals, and event listeners.
+ */
+function initializeUI() {
+    // Initialize Bootstrap Modals
+    editSheepModal = new bootstrap.Modal(document.getElementById('editSheepModal'));
+    saleSheepModal = new bootstrap.Modal(document.getElementById('saleSheepModal'));
+    treatmentLogModal = new bootstrap.Modal(document.getElementById('treatmentLogModal'));
+    weightEntryModal = new bootstrap.Modal(document.getElementById('weightEntryModal'));
+    batchTreatmentModal = new bootstrap.Modal(document.getElementById('batchTreatmentModal'));
+
+    // Set default date for new records
+    document.getElementById('dateRecorded').valueAsDate = new Date();
+
+    addEventListeners();
+
+    // Initial data fetch
+    fetchAllRecords();
+    fetchSoldRecords();
+    fetchArchivedRecords();
+}
+
+/**
+ * Centralized function to add all necessary event listeners for the app.
+ */
+function addEventListeners() {
+    // --- Main App Click Handler (Event Delegation) ---
+    mainApp.addEventListener('click', (e) => {
+        const target = e.target;
+        const recordBtn = target.closest('[data-record-id]');
+        const recordId = recordBtn?.dataset.recordId;
+        const sheepId = recordBtn?.dataset.sheepId;
+
+        // Table row actions
+        if (target.closest('.js-edit-record')) openEditModal(recordId);
+        else if (target.closest('.js-sale-record')) openSaleModal(recordId);
+        else if (target.closest('.js-delete-record')) deleteRecord(recordId, sheepId);
+        else if (target.closest('.js-archive-record')) archiveRecord(recordId);
+        else if (target.closest('.js-manage-treatment')) openTreatmentLog(recordId, sheepId);
+        else if (target.closest('.js-delete-sold-record')) deleteSoldRecord(recordId, sheepId);
+        else if (target.closest('.js-delete-archived-record')) deleteArchivedRecord(recordId, sheepId);
+        else if (target.closest('.js-edit-treatment')) editTreatmentEntry(recordId, recordBtn.dataset.entryId);
+        else if (target.closest('.js-delete-treatment')) deleteTreatmentEntry(recordId, recordBtn.dataset.entryId);
+        else if (target.closest('.js-edit-weight')) openWeightModal(recordId, recordBtn.dataset.entryId, recordBtn.dataset.source);
+        else if (target.closest('.js-delete-weight')) deleteWeightEntry(recordId, recordBtn.dataset.entryId, recordBtn.dataset.source);
+        
+        // Other buttons
+        else if (target.closest('#signOutBtn')) signOut(auth);
+        else if (target.closest('#sidebarToggleBtn')) document.querySelector('.dashboard-sidebar').classList.toggle('visible');
+        else if (target.closest('#batchLogBtn')) openBatchLogModal();
+        else if (target.closest('.js-reset-treatment-form')) resetTreatmentForm();
+        else if (target.closest('#prevSheepBtn')) navigateProfile(-1);
+        else if (target.closest('#nextSheepBtn')) navigateProfile(1);
+        else if (target.closest('#profileEditBtn')) {
+            const selectedId = document.getElementById('profileSheepSelector').value;
+            if (selectedId) openEditModal(selectedId);
+        }
+        else if (target.closest('.js-export-healthy')) exportData();
+        else if (target.closest('.js-export-treatment')) exportTreatmentData();
+        else if (target.closest('.js-export-sold')) exportSoldData();
+        else if (target.closest('.notification-item')) {
+            e.preventDefault();
+            viewRecordFromNotification(target.closest('.notification-item').dataset.recordId);
+        }
+    });
+
+    // --- Navigation ---
+    document.querySelector('.dashboard-sidebar .nav').addEventListener('click', e => {
+        const link = e.target.closest('a.nav-link[data-section]');
+        if (link) {
+            e.preventDefault();
+            showSection(link.dataset.section);
+        }
+    });
+
+    // --- Form Submissions ---
+    document.getElementById('sheepHealthForm').addEventListener('submit', handleAddRecord);
+    document.getElementById('editSheepForm').addEventListener('submit', handleUpdateRecord);
+    document.getElementById('saleSheepForm').addEventListener('submit', handleSaleSubmit);
+    document.getElementById('addTreatmentForm').addEventListener('submit', handleSaveTreatment);
+    document.getElementById('batchTreatmentForm').addEventListener('submit', handleBatchSaveTreatment);
+    document.getElementById('weightEntryForm').addEventListener('submit', handleSaveWeight);
+
+    // --- Filters & Search ---
+    document.getElementById('scheduleFilterButtons').addEventListener('click', e => {
+        if (e.target.matches('button')) updateScheduleView(e.target.dataset.filter);
+    });
+    document.getElementById('weeklyFilterButtons').addEventListener('click', e => {
+        if (e.target.matches('button')) updateWeeklyTrackingView(e.target.dataset.filter);
+    });
+    mainApp.addEventListener('keyup', e => {
+        if (e.target.matches('input[data-table-body-id]')) {
+            filterTableBySheepId(e.target, e.target.dataset.tableBodyId);
+        } else if (e.target.matches('#profileSearchInput')) {
+            filterProfileSelector();
+        }
+    });
+
+    // --- Dynamic UI Listeners ---
+    document.getElementById('scheduleTableBody').addEventListener('change', e => {
+        if (e.target.matches('.sheep-select-checkbox')) updateBatchLogUI();
+    });
+    document.getElementById('selectAllSchedule').addEventListener('change', e => {
+        document.querySelectorAll('#scheduleTableBody .sheep-select-checkbox').forEach(cb => cb.checked = e.target.checked);
+        updateBatchLogUI();
+    });
+    document.getElementById('profileSheepSelector').addEventListener('change', e => {
+        if (e.target.value) renderProfileForSheep(e.target.value);
+    });
+    document.getElementById('weightSheepSelector').addEventListener('change', e => {
+        if (e.target.value) renderWeightChartForSheep(e.target.value);
+    });
+    document.getElementById('addWeightBtn').addEventListener('click', () => {
+        const recordId = document.getElementById('weightSheepSelector').value;
+        if (recordId) openWeightModal(recordId);
+    });
+}
