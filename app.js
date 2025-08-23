@@ -1038,64 +1038,64 @@ function deleteRecord(recordId, sheepId) {
     }
 }
 
-function archiveRecord(recordId) {
-    if (confirm('Are you sure you want to mark this sheep as deceased and move it to the archive? This action moves the record and cannot be easily undone.')) {
-        const recordToArchive = allRecords.find(r => r.id === recordId);
-        if (!recordToArchive) return alert("Record not found.");
+// function archiveRecord(recordId) {
+//     if (confirm('Are you sure you want to mark this sheep as deceased and move it to the archive? This action moves the record and cannot be easily undone.')) {
+//         const recordToArchive = allRecords.find(r => r.id === recordId);
+//         if (!recordToArchive) return alert("Record not found.");
 
-        const archivedRecord = {
-            ...recordToArchive,
-            healthStatus: 'Deceased',
-            archiveDate: new Date().toISOString().split('T')[0]
-        };
-        delete archivedRecord.id;
+//         const archivedRecord = {
+//             ...recordToArchive,
+//             healthStatus: 'Deceased',
+//             archiveDate: new Date().toISOString().split('T')[0]
+//         };
+//         delete archivedRecord.id;
 
-        push(ref(db, 'sheepArchivedRecords'), archivedRecord).then(() => {
-            remove(ref(db, `sheepHealthRecords/${recordId}`));
-        });
-    }
-}
+//         push(ref(db, 'sheepArchivedRecords'), archivedRecord).then(() => {
+//             remove(ref(db, `sheepHealthRecords/${recordId}`));
+//         });
+//     }
+// }
 
-function deleteSoldRecord(recordId, sheepId) {
-    if (confirm(`Are you sure you want to PERMANENTLY DELETE the sale record for sheep "${sheepId}"? This action cannot be undone.`)) {
-        remove(ref(db, `sheepSaledRecords/${recordId}`));
-    }
-}
+// function deleteSoldRecord(recordId, sheepId) {
+//     if (confirm(`Are you sure you want to PERMANENTLY DELETE the sale record for sheep "${sheepId}"? This action cannot be undone.`)) {
+//         remove(ref(db, `sheepSaledRecords/${recordId}`));
+//     }
+// }
 
-function deleteArchivedRecord(recordId, sheepId) {
-    if (confirm(`Are you sure you want to PERMANENTLY DELETE the archived record for sheep "${sheepId}"? This action cannot be undone.`)) {
-        remove(ref(db, `sheepArchivedRecords/${recordId}`));
-    }
-}
+// function deleteArchivedRecord(recordId, sheepId) {
+//     if (confirm(`Are you sure you want to PERMANENTLY DELETE the archived record for sheep "${sheepId}"? This action cannot be undone.`)) {
+//         remove(ref(db, `sheepArchivedRecords/${recordId}`));
+//     }
+// }
 
-function openSaleModal(recordId) {
-    document.getElementById('saleRecordId').value = recordId;
-    document.getElementById('saleDate').valueAsDate = new Date();
-    saleSheepModal.show();
-}
+// function openSaleModal(recordId) {
+//     document.getElementById('saleRecordId').value = recordId;
+//     document.getElementById('saleDate').valueAsDate = new Date();
+//     saleSheepModal.show();
+// }
 
-function handleSaleSubmit(e) {
-    e.preventDefault();
-    const recordId = document.getElementById('saleRecordId').value;
-    const recordToSell = allRecords.find(r => r.id === recordId);
-    if (!recordToSell) return alert("Record not found.");
+// function handleSaleSubmit(e) {
+//     e.preventDefault();
+//     const recordId = document.getElementById('saleRecordId').value;
+//     const recordToSell = allRecords.find(r => r.id === recordId);
+//     if (!recordToSell) return alert("Record not found.");
 
-    const soldRecord = {
-        ...recordToSell,
-        saleDate: document.getElementById('saleDate').value,
-        salePrice: document.getElementById('salePrice').value,
-        saleBuyer: document.getElementById('saleBuyer').value.trim(),
-        saleNotes: document.getElementById('saleNotes').value.trim(),
-    };
-    delete soldRecord.id;
+//     const soldRecord = {
+//         ...recordToSell,
+//         saleDate: document.getElementById('saleDate').value,
+//         salePrice: document.getElementById('salePrice').value,
+//         saleBuyer: document.getElementById('saleBuyer').value.trim(),
+//         saleNotes: document.getElementById('saleNotes').value.trim(),
+//     };
+//     delete soldRecord.id;
 
-    push(ref(db, 'sheepSaledRecords'), soldRecord).then(() => {
-        remove(ref(db, `sheepHealthRecords/${recordId}`)).then(() => {
-            saleSheepModal.hide();
-            e.target.reset();
-        });
-    });
-}
+//     push(ref(db, 'sheepSaledRecords'), soldRecord).then(() => {
+//         remove(ref(db, `sheepHealthRecords/${recordId}`)).then(() => {
+//             saleSheepModal.hide();
+//             e.target.reset();
+//         });
+//     });
+// }
 
 function openTreatmentLog(recordId, sheepId) {
     document.getElementById('modalSheepId').textContent = sheepId;
@@ -1672,5 +1672,6 @@ function downloadCSV(csv, filename) {
 }
 
  //        }
+
 
 
