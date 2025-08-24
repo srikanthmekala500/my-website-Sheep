@@ -18,9 +18,10 @@ let allRecords = [];
 let soldRecords = [];
 let archivedRecords = [];
 let editSheepModal, saleSheepModal, treatmentLogModal, weightEntryModal, batchTreatmentModal, editSoldSheepModal;
-let weightChart, profileWeightChart;
+let weightChart, profileWeightChart, profitLossChart;
 let currentWeeklyFilter = 'all';
 let currentScheduleFilter = 'all';
+let currentSoldFilter = 'all';
 let treatmentLogListener = null; // To manage the live listener for the treatment modal
 
 // --- DOM ELEMENT SELECTORS ---
@@ -231,6 +232,7 @@ function fetchSoldRecords() {
         soldRecords = [];
         let rowsHtml = '';
         const monthlyTotals = {};
+        const yearlyTotals = {};
 
         if (snapshot.exists()) {
             snapshot.forEach(child => {
@@ -238,35 +240,52 @@ function fetchSoldRecords() {
                 soldRecords.push(record);
 
                 // Calculate monthly totals
-                if (record.saleDate && record.salePrice) {
+                if (record.saleDate && record.salePrice != null) {
                     const saleDate = new Date(record.saleDate + 'T00:00:00');
                     if (!isNaN(saleDate.getTime())) {
-                        const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`; // e.g., "2025-08"
+                        const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`;
+                        const yearKey = `${saleDate.getFullYear()}`;
                         
                         if (!monthlyTotals[monthKey]) {
                             monthlyTotals[monthKey] = { sales: 0, profit: 0 };
                         }
 
+                        if (!yearlyTotals[yearKey]) {
+                            yearlyTotals[yearKey] = { sales: 0, profit: 0 };
+                        }
+
                         const salePrice = parseFloat(record.salePrice) || 0;
                         const buyingPrice = parseFloat(record.buyingPrice) || 0;
-                        const profit = salePrice - buyingPrice;
+                        const treatmentCosts = (record.treatments && typeof record.treatments === 'object')
+                            ? Object.values(record.treatments).reduce((sum, t) => sum + (parseFloat(t.cost) || 0), 0)
+                            : 0;
+                        const totalCost = buyingPrice + treatmentCosts;
+                        const profit = salePrice - totalCost;
 
                         monthlyTotals[monthKey].sales += salePrice;
                         monthlyTotals[monthKey].profit += profit;
+                        yearlyTotals[yearKey].sales += salePrice;
+                        yearlyTotals[yearKey].profit += profit;
                     }
                 }
             });
             soldRecords.reverse(); // Show newest first
-            rowsHtml = soldRecords.map(renderSoldRow).join('');
         }
-        tableBody.innerHTML = rowsHtml || `<tr><td colspan="5" class="text-center p-4 text-muted">No sold records found.</td></tr>`;
         
         renderMonthlySalesSummary(monthlyTotals);
-
+        renderYearlySalesSummary(yearlyTotals);
+        renderProfitLossChart(monthlyTotals);
+        updateSoldRecordsView(); // Render the table with the current filter
         updateProfileView();
     }, error => {
         console.error("Error fetching sold records:", error);
         document.getElementById('sheepSaledTableBody').innerHTML = `<tr><td colspan="5" class="text-center text-danger p-4">Error loading sold records. Check browser console for details.</td></tr>`;
+        const errorHtml = '<p class="text-danger text-center p-3 mb-0">Error loading sales data.</p>';
+        const monthlyContainer = document.getElementById('monthlySalesSummary');
+        const yearlyContainer = document.getElementById('yearlySalesSummary');
+        if (monthlyContainer) monthlyContainer.innerHTML = errorHtml;
+        if (yearlyContainer) yearlyContainer.innerHTML = errorHtml;
+        renderProfitLossChart({}); // Clear the chart on error
     });
 }
 
@@ -337,7 +356,11 @@ function renderSoldRow(record) {
     // Financial Calculations
     const buyingPrice = parseFloat(record.buyingPrice) || 0;
     const salePrice = parseFloat(record.salePrice) || 0;
-    const profit = salePrice - buyingPrice;
+    const treatmentCosts = (record.treatments && typeof record.treatments === 'object')
+        ? Object.values(record.treatments).reduce((sum, t) => sum + (parseFloat(t.cost) || 0), 0)
+        : 0;
+    const totalCost = buyingPrice + treatmentCosts;
+    const profit = salePrice - totalCost;
 
     let profitClass = 'text-body-secondary';
     let profitSign = '';
@@ -361,6 +384,7 @@ function renderSoldRow(record) {
             <td>
                 <div class="d-flex justify-content-between"><span>Sale Price</span><strong>₹${salePrice.toFixed(2)}</strong></div>
                 <div class="d-flex justify-content-between small text-muted"><span>Buying Price</span><span>- ₹${buyingPrice.toFixed(2)}</span></div>
+                <div class="d-flex justify-content-between small text-muted"><span>Treatment Costs</span><span>- ₹${treatmentCosts.toFixed(2)}</span></div>
                 <hr class="my-1">
                 <div class="d-flex justify-content-between fw-bold ${profitClass}"><span>Profit/Loss</span><span>${profitSign}₹${profit.toFixed(2)}</span></div>
             </td>
@@ -419,6 +443,190 @@ function renderMonthlySalesSummary(monthlyTotals) {
     listHtml += '</ul>';
 
     container.innerHTML = listHtml;
+}
+
+function renderYearlySalesSummary(yearlyTotals) {
+    const container = document.getElementById('yearlySalesSummary');
+    if (!container) {
+        console.error("UI Error: HTML element with ID 'yearlySalesSummary' not found.");
+        return;
+    }
+
+    if (Object.keys(yearlyTotals).length === 0) {
+        container.innerHTML = '<p class="text-muted text-center p-3 mb-0">No sales data available for years.</p>';
+        return;
+    }
+
+    // Sort years chronologically, newest first, and limit to the last 5 years for a clean look
+    const sortedYears = Object.keys(yearlyTotals).sort().reverse().slice(0, 5);
+
+    let listHtml = '<ul class="list-group list-group-flush">';
+    sortedYears.forEach(yearKey => {
+        const yearData = yearlyTotals[yearKey];
+        const { sales, profit } = yearData;
+
+        const profitClass = profit >= 0 ? 'text-success' : 'text-danger';
+        const profitSign = profit >= 0 ? '+' : '';
+
+        listHtml += `
+            <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>${yearKey}</span>
+                    <strong class="text-dark-emphasis">₹${sales.toFixed(2)}</strong>
+                </div>
+                <div class="d-flex justify-content-between align-items-center small mt-1">
+                    <span class="text-muted">Profit/Loss</span>
+                    <strong class="${profitClass}">${profitSign}₹${profit.toFixed(2)}</strong>
+                </div>
+            </li>
+        `;
+    });
+    listHtml += '</ul>';
+
+    container.innerHTML = listHtml;
+}
+
+/**
+ * Renders a bar chart showing monthly profit and loss.
+ * @param {object} monthlyData - An object with month keys and profit/sales data.
+ */
+function renderProfitLossChart(monthlyData) {
+    const chartCanvas = document.getElementById('profitLossChart');
+    const noDataEl = document.getElementById('noChartDataMessage');
+
+    if (!chartCanvas || !noDataEl) {
+        // This can happen if the user is not on the 'saled' page. It's not an error.
+        return;
+    }
+
+    if (Object.keys(monthlyData).length < 1) {
+        chartCanvas.style.display = 'none';
+        noDataEl.style.display = 'block';
+        noDataEl.textContent = 'No sales data available to generate a chart.';
+        if (profitLossChart) {
+            profitLossChart.destroy();
+            profitLossChart = null;
+        }
+        return;
+    }
+
+    chartCanvas.style.display = 'block';
+    noDataEl.style.display = 'none';
+
+    const sortedMonths = Object.keys(monthlyData).sort();
+
+    const labels = sortedMonths.map(monthKey => {
+        const [year, month] = monthKey.split('-');
+        return new Date(year, month - 1, 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+    });
+
+    const salesData = sortedMonths.map(monthKey => monthlyData[monthKey].sales);
+    const profitData = sortedMonths.map(monthKey => {
+        const profit = monthlyData[monthKey].profit;
+        return profit > 0 ? profit : 0;
+    });
+    const lossData = sortedMonths.map(monthKey => {
+        const profit = monthlyData[monthKey].profit;
+        return profit < 0 ? -profit : 0; // Store as a positive number for bar height
+    });
+
+    const ctx = chartCanvas.getContext('2d');
+    if (profitLossChart) {
+        profitLossChart.destroy();
+    }
+
+    profitLossChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Total Sales',
+                    data: salesData,
+                    backgroundColor: 'rgba(13, 110, 253, 0.6)',
+                    borderColor: 'rgba(13, 110, 253, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Profit',
+                    data: profitData,
+                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 1
+                },
+                {
+                    label: 'Loss',
+                    data: lossData,
+                    backgroundColor: 'rgba(220, 53, 69, 0.6)',
+                    borderColor: 'rgba(220, 53, 69, 1)',
+                    borderWidth: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { beginAtZero: true, title: { display: true, text: 'Amount (₹)' } },
+                x: { title: { display: true, text: 'Month' } }
+            },
+            plugins: {
+                legend: { display: true, position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            let label = context.dataset.label || '';
+                            let value = context.parsed.y;
+                            if (label === 'Loss' && value !== 0) {
+                                return `${label}: -₹${value.toFixed(2)}`;
+                            }
+                            return `${label}: ₹${value.toFixed(2)}`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Filters and renders the sold records table based on the selected filter.
+ * @param {string} [filter=currentSoldFilter] - The filter to apply ('all', 'profitable', 'loss').
+ */
+function updateSoldRecordsView(filter = currentSoldFilter) {
+    currentSoldFilter = filter;
+
+    document.querySelectorAll('#soldRecordsFilterButtons button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+
+    const tableBody = document.getElementById('sheepSaledTableBody');
+
+    const filteredRecords = soldRecords.filter(record => {
+        if (filter === 'all') {
+            return true;
+        }
+
+        // Re-calculate profit for filtering
+        const buyingPrice = parseFloat(record.buyingPrice) || 0;
+        const salePrice = parseFloat(record.salePrice) || 0;
+        const treatmentCosts = (record.treatments && typeof record.treatments === 'object')
+            ? Object.values(record.treatments).reduce((sum, t) => sum + (parseFloat(t.cost) || 0), 0)
+            : 0;
+        const totalCost = buyingPrice + treatmentCosts;
+        const profit = salePrice - totalCost;
+
+        if (filter === 'profitable') {
+            return profit >= 0;
+        }
+        if (filter === 'loss') {
+            return profit < 0;
+        }
+        return false;
+    });
+
+    const rowsHtml = filteredRecords.map(renderSoldRow).join('');
+    tableBody.innerHTML = rowsHtml || `<tr><td colspan="5" class="text-center p-4 text-muted">No sold records match the filter criteria.</td></tr>`;
 }
 
 function renderArchivedRow(record) {
@@ -680,21 +888,24 @@ function checkPreventativeCareReminders() {
 
     allRecords.forEach(record => {
         const dewormingDayDiff = getDayDiffFromLastDate(record.lastDewormingDate, 30);
-        if (dewormingDayDiff !== null && dewormingDayDiff <= 24) {
+        // Show reminders for anything due within the next 30 days or that is overdue
+        if (dewormingDayDiff !== null && dewormingDayDiff <= 30) {
             let status = '', message = '';
-            if (dewormingDayDiff < 0) { message = `Deworming is overdue by ${-dewormingDayDiff} day(s).`; }
-            else if (dewormingDayDiff === 0) { message = 'Deworming is due today.'; }
-            else { message = `Deworming due in ${dewormingDayDiff} day(s).`; }
-
-            if (dewormingDayDiff <= 5) { status = 'Overdue'; }
-            else { status = 'Upcoming'; }
+            if (dewormingDayDiff < 0) {
+                status = 'Overdue';
+                message = `Deworming is overdue by ${-dewormingDayDiff} day(s).`;
+            } else if (dewormingDayDiff === 0) {
+                status = 'Due Today';
+                message = 'Deworming is due today.';
+            } else {
+                status = 'Upcoming';
+                message = `Deworming due in ${dewormingDayDiff} day(s).`;
+            }
             reminders.push({ sheepId: record.sheepId, recordId: record.id, message, status });
         }
 
         let vaxDayDiff;
         if (record.manualVaccinationDueDate) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
             const dueDate = new Date(record.manualVaccinationDueDate + 'T00:00:00');
             if (!isNaN(dueDate.getTime())) {
                 vaxDayDiff = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
@@ -704,14 +915,19 @@ function checkPreventativeCareReminders() {
         } else {
             vaxDayDiff = getDayDiffFromLastDate(record.lastVaccinationDate, 365);
         }
-        if (vaxDayDiff !== null && vaxDayDiff <= 24) {
+        // Show reminders for anything due within the next 30 days or that is overdue
+        if (vaxDayDiff !== null && vaxDayDiff <= 30) {
             let status = '', message = '';
-            if (vaxDayDiff < 0) { message = `Vaccination is overdue by ${-vaxDayDiff} day(s).`; }
-            else if (vaxDayDiff === 0) { message = 'Vaccination is due today.'; }
-            else { message = `Vaccination due in ${vaxDayDiff} day(s).`; }
-
-            if (vaxDayDiff <= 5) { status = 'Overdue'; }
-            else { status = 'Upcoming'; }
+            if (vaxDayDiff < 0) {
+                status = 'Overdue';
+                message = `Vaccination is overdue by ${-vaxDayDiff} day(s).`;
+            } else if (vaxDayDiff === 0) {
+                status = 'Due Today';
+                message = 'Vaccination is due today.';
+            } else {
+                status = 'Upcoming';
+                message = `Vaccination due in ${vaxDayDiff} day(s).`;
+            }
             reminders.push({ sheepId: record.sheepId, recordId: record.id, message, status });
         }
     });
@@ -1107,16 +1323,16 @@ function calculateAndDisplayWeightStats(allWeightPoints, containerId = 'weightSt
     const weightGain = lastPoint.weight - firstPoint.weight;
     const timeDiffDays = (lastPoint.date.getTime() - firstPoint.date.getTime()) / (1000 * 60 * 60 * 24);
 
-    let awg = 0;
+    let adg = 0;
     if (timeDiffDays > 0) {
-        awg = (weightGain / timeDiffDays) * 7; // in kg/week
+        adg = weightGain / timeDiffDays; // in kg/day
     }
 
     container.innerHTML = `
         <h5 class="card-title mb-3">Weight Statistics</h5>
         <div class="mb-3">
-            <p class="mb-0 text-muted">Average Weekly Gain</p>
-            <h3 class="text-success">${awg.toFixed(2)} kg/week</h3>
+            <p class="mb-0 text-muted">Average Daily Gain (ADG)</p>
+            <h3 class="text-success">${adg.toFixed(3)} kg/day</h3>
         </div>
         <div class="mb-3">
             <p class="mb-0 text-muted">Net Weight Gain</p>
@@ -1138,6 +1354,7 @@ function updateFlockStatus() {
     const pregnant = allRecords.filter(r => r.healthStatus === 'Pregnant').length;
     const maleCount = allRecords.filter(r => r.gender === 'Male').length;
     const femaleCount = allRecords.filter(r => r.gender === 'Female').length;
+    const totalValue = allRecords.reduce((sum, record) => sum + (parseFloat(record.buyingPrice) || 0), 0);
 
     updateElement('totalCount', total);
     updateElement('healthyCount', healthy);
@@ -1146,9 +1363,10 @@ function updateFlockStatus() {
     updateElement('pregnantCount', pregnant);
     updateElement('maleCount', maleCount);
     updateElement('femaleCount', femaleCount);
+    updateElement('flockValue', `₹${totalValue.toFixed(2)}`);
 }
 
-function calculateAWG(record) {
+function calculateADG(record) {
     const allWeightPoints = gatherAllWeightData(record);
     if (allWeightPoints.length < 2) {
         return null;
@@ -1161,36 +1379,15 @@ function calculateAWG(record) {
     const timeDiffDays = (lastPoint.date.getTime() - firstPoint.date.getTime()) / (1000 * 60 * 60 * 24);
 
     if (timeDiffDays > 0) {
-        return (weightGain / timeDiffDays) * 7; // in kg/week
+        return weightGain / timeDiffDays; // in kg/day
     }
     return null;
 }
 
 function updateGrowthAnalytics() {
-    const fastestList = document.getElementById('fastestGrowersList');
-    const slowestList = document.getElementById('slowestGrowersList');
-    fastestList.innerHTML = '<li class="list-group-item text-muted">Calculating...</li>';
-    slowestList.innerHTML = '<li class="list-group-item text-muted">Calculating...</li>';
-
-    const sheepWithAwg = allRecords
-        .map(record => ({ sheepId: record.sheepId, awg: calculateAWG(record) }))
-        .filter(item => item.awg !== null && !isNaN(item.awg));
-
-    if (sheepWithAwg.length === 0) {
-        const noDataHtml = '<li class="list-group-item text-muted">Not enough data for weekly gain calculation.</li>';
-        fastestList.innerHTML = noDataHtml;
-        slowestList.innerHTML = noDataHtml;
-        return;
-    }
-
-    const sortedFastest = [...sheepWithAwg].sort((a, b) => b.awg - a.awg);
-    fastestList.innerHTML = sortedFastest.map(s => `<li class="list-group-item d-flex justify-content-between align-items-center">${s.sheepId} <span class="badge bg-success rounded-pill">${s.awg.toFixed(2)} kg/week</span></li>`).join('') || '<li class="list-group-item text-muted">No sheep with calculated growth.</li>';
-
-    const sortedSlowest = [...sheepWithAwg].sort((a, b) => a.awg - a.awg);
-    slowestList.innerHTML = sortedSlowest.map(s => {
-        const badgeClass = s.awg < 0 ? 'bg-danger' : 'bg-warning text-dark';
-        return `<li class="list-group-item d-flex justify-content-between align-items-center">${s.sheepId} <span class="badge ${badgeClass} rounded-pill">${s.awg.toFixed(2)} kg/week</span></li>`;
-    }).join('') || '<li class="list-group-item text-muted">No sheep with calculated growth.</li>';
+    // This section has been removed as per user request.
+    // To re-enable, restore the logic for calculating and displaying
+    // fastest and slowest growing sheep.
 }
 
 // --- FORM & MODAL HANDLERS ---
@@ -1952,15 +2149,27 @@ function getStatusClass(status) {
     return '';
 }
 
-function filterTableBySheepId(inputElement, tableBodyId) {
+/**
+ * Filters a table's rows based on a search term.
+ * Hides rows that do not contain the search term in any of their cells.
+ * @param {HTMLInputElement} inputElement The input element containing the search term.
+ * @param {string} tableBodyId The ID of the tbody element to filter.
+ */
+function filterTable(inputElement, tableBodyId) {
     const searchTerm = inputElement.value.toLowerCase();
     const tableBody = document.getElementById(tableBodyId);
     if (!tableBody) return;
     const rows = tableBody.querySelectorAll('tr');
     rows.forEach(row => {
+        // Ignore placeholder rows (e.g., "No records found")
+        if (row.cells.length === 1 && row.cells[0].colSpan > 1) {
+            return;
+        }
+
         if (row.cells.length > 0) {
-            const sheepId = row.cells[0]?.textContent.toLowerCase() || '';
-            row.style.display = sheepId.includes(searchTerm) ? '' : 'none';
+            const rowText = row.textContent.toLowerCase();
+            const isVisible = rowText.includes(searchTerm);
+            row.style.display = isVisible ? '' : 'none';
         }
     });
 }
@@ -2216,10 +2425,11 @@ function addEventListeners() {
     // --- Filters & Search ---
     addSafeEventListener('scheduleFilterButtons', 'click', e => { if (e.target.matches('button')) updateScheduleView(e.target.dataset.filter); });
     addSafeEventListener('weeklyFilterButtons', 'click', e => { if (e.target.matches('button')) updateWeeklyTrackingView(e.target.dataset.filter); });
+    addSafeEventListener('soldRecordsFilterButtons', 'click', e => { if (e.target.matches('button')) updateSoldRecordsView(e.target.dataset.filter); });
 
     mainApp.addEventListener('keyup', e => {
         if (e.target.matches('input[data-table-body-id]')) {
-            filterTableBySheepId(e.target, e.target.dataset.tableBodyId);
+            filterTable(e.target, e.target.dataset.tableBodyId);
         } else if (e.target.matches('#profileSearchInput')) {
             filterProfileSelector();
         }
