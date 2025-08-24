@@ -768,11 +768,15 @@
                         <select class="form-select form-select-sm me-2" id="soldMonthFilter" style="width: auto;">
                             <option value="all">All Months</option>
                         </select>
+                    <select class="form-select form-select-sm me-2" id="soldYearFilter" style="width: auto;">
+                        <option value="all">All Years</option>
+                    </select>
                         <div id="soldRecordsFilterButtons" class="btn-group btn-group-sm me-2" role="group">
                             <button type="button" class="btn btn-outline-secondary active" data-filter="all">All</button>
                             <button type="button" class="btn btn-outline-success" data-filter="profitable">Profitable</button>
                             <button type="button" class="btn btn-outline-danger" data-filter="loss">Loss</button>
                         </div>
+                        <button id="clearSoldFiltersBtn" class="btn btn-sm btn-outline-secondary me-2" title="Clear all filters" style="display: none;"><i class="fas fa-times"></i></button>
                         <input type="search" class="form-control form-control-sm" placeholder="Search..." data-table-body-id="sheepSaledTableBody" style="width: 200px;">
                     </div>
                 </div>
