@@ -1384,10 +1384,83 @@ function calculateADG(record) {
     return null;
 }
 
+/**
+ * Calculates and displays a table of growth statistics for every active sheep.
+ */
 function updateGrowthAnalytics() {
-    // This section has been removed as per user request.
-    // To re-enable, restore the logic for calculating and displaying
-    // fastest and slowest growing sheep.
+    const tableBody = document.getElementById('growthAnalyticsTableBody');
+    if (!tableBody) {
+        // Silently return if the user is not on the growth analytics page.
+        return;
+    }
+
+    const recordsWithStats = allRecords.map(record => {
+        const allWeightPoints = gatherAllWeightData(record);
+        if (allWeightPoints.length < 2) {
+            return { id: record.id, sheepId: record.sheepId, breed: record.breed, hasData: false };
+        }
+
+        const firstPoint = allWeightPoints[0];
+        const lastPoint = allWeightPoints[allWeightPoints.length - 1];
+
+        const weightGain = lastPoint.weight - firstPoint.weight;
+        const timeDiffDays = Math.max(1, (lastPoint.date.getTime() - firstPoint.date.getTime()) / (1000 * 60 * 60 * 24));
+        const adg = weightGain / timeDiffDays;
+
+        return {
+            id: record.id,
+            sheepId: record.sheepId,
+            breed: record.breed,
+            hasData: true,
+            netGain: weightGain,
+            days: timeDiffDays,
+            startWeight: firstPoint.weight,
+            latestWeight: lastPoint.weight,
+            adg: adg
+        };
+    }).sort((a, b) => (b.adg || -Infinity) - (a.adg || -Infinity)); // Sort by ADG descending
+
+    if (recordsWithStats.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="5" class="text-center p-4">No active sheep records found.</td></tr>';
+        return;
+    }
+
+    const rowsHtml = recordsWithStats.map((stat, index) => {
+        if (!stat.hasData) {
+            return `<tr>
+                        <td class="text-center text-muted align-middle">--</td>
+                        <td>
+                            <a href="#" class="fw-bold profile-link" data-sheep-id="${stat.id}">${stat.sheepId}</a>
+                            <div class="small text-muted">${stat.breed || 'N/A'}</div>
+                        </td>
+                        <td colspan="3" class="text-center text-muted">Not enough weight data</td>
+                    </tr>`;
+        }
+
+        const gainClass = stat.netGain >= 0 ? 'text-success' : 'text-danger';
+        const adgBadgeClass = stat.adg >= 0 ? 'bg-success' : 'bg-danger';
+        const rank = index + 1;
+        let rankClass = 'text-dark';
+        if (rank === 1) rankClass = 'text-success fw-bold';
+        if (rank === 2) rankClass = 'text-primary fw-bold';
+        if (rank === 3) rankClass = 'text-info fw-bold';
+
+        return `<tr>
+                    <td class="text-center align-middle"><h5 class="mb-0 ${rankClass}">${rank}</h5></td>
+                    <td class="align-middle">
+                        <a href="#" class="fw-bold profile-link" data-sheep-id="${stat.id}">${stat.sheepId}</a>
+                        <div class="small text-muted">${stat.breed || 'N/A'}</div>
+                    </td>
+                    <td class="align-middle text-center">
+                        ${stat.startWeight.toFixed(1)} &rarr; ${stat.latestWeight.toFixed(1)}
+                        <div class="small text-muted">(${stat.days.toFixed(0)} days)</div>
+                    </td>
+                    <td class="align-middle text-center"><h5 class="mb-0 fw-bold ${gainClass}">${stat.netGain.toFixed(1)} kg</h5></td>
+                    <td class="align-middle text-center"><span class="badge fs-6 ${adgBadgeClass}">${(stat.adg * 1000).toFixed(0)} g/day</span></td>
+                </tr>`;
+    }).join('');
+
+    tableBody.innerHTML = rowsHtml;
 }
 
 // --- FORM & MODAL HANDLERS ---
@@ -1803,6 +1876,7 @@ function updateProfileView() {
         sortedActive.forEach(record => {
             const option = document.createElement('option');
             option.value = record.id;
+            option.dataset.breed = record.breed || 'N/A';
             option.textContent = record.sheepId;
             activeGroup.appendChild(option);
         });
@@ -1816,6 +1890,7 @@ function updateProfileView() {
         sortedSold.forEach(record => {
             const option = document.createElement('option');
             option.value = record.id;
+            option.dataset.breed = record.breed || 'N/A';
             option.textContent = record.sheepId;
             soldGroup.appendChild(option);
         });
@@ -1829,6 +1904,7 @@ function updateProfileView() {
         sortedArchived.forEach(record => {
             const option = document.createElement('option');
             option.value = record.id;
+            option.dataset.breed = record.breed || 'N/A';
             option.textContent = record.sheepId;
             archivedGroup.appendChild(option);
         });
@@ -2181,7 +2257,9 @@ function filterProfileSelector() {
     for (const option of selector.options) {
         if (option.disabled) continue;
         const optionText = option.textContent.toLowerCase();
-        option.style.display = optionText.includes(searchTerm) ? '' : 'none';
+        const breed = (option.dataset.breed || '').toLowerCase();
+        const matchesSearch = optionText.includes(searchTerm) || breed.includes(searchTerm);
+        option.style.display = matchesSearch ? '' : 'none';
     }
 
     for (const group of selector.getElementsByTagName('optgroup')) {
@@ -2436,9 +2514,9 @@ function addEventListeners() {
     });
 
     // --- Dynamic UI Listeners ---
-    addSafeEventListener('scheduleTableBody', 'change', e => { if (e.target.matches('.sheep-select-checkbox')) updateBatchLogUI(); });
+    addSafeEventListener('scheduleTableBody', 'change', e => { if (e.target.matches('.schedule-checkbox')) updateBatchLogUI(); });
     addSafeEventListener('selectAllSchedule', 'change', e => {
-        document.querySelectorAll('#scheduleTableBody .sheep-select-checkbox').forEach(cb => cb.checked = e.target.checked);
+        document.querySelectorAll('#scheduleTableBody .schedule-checkbox').forEach(cb => cb.checked = e.target.checked);
         updateBatchLogUI();
     });
     addSafeEventListener('profileSheepSelector', 'change', e => { if (e.target.value) renderProfileForSheep(e.target.value); });
