@@ -171,11 +171,14 @@
     </style>
 </head>
 <body>
-    <header class="header-section text-center">
-        <img src="./mekals logo.Jpg.jpg" alt="Your Farm Logo" class="header-logo"> <h1 class="display-4 text-primary">MEKALA</h1>
-        <p class="lead text-muted">Simple records for stronger flocks
-
-</p>
+    <header class="header-section">
+        <div class="container text-center">
+            <div class="d-flex justify-content-center align-items-center mb-2">
+                <img src="./mekals logo.Jpg.jpg" alt="MEKALA Farm Logo" class="header-logo me-3">
+                <h1 class="display-4 text-primary mb-0">MEKALA</h1>
+            </div>
+            <p class="lead text-muted mb-0">Simple records for stronger flocks</p>
+        </div>
     </header>
 
     <!-- Auth Section -->
@@ -233,6 +236,13 @@
 
         <div class="dashboard-layout">
             <nav class="dashboard-sidebar">
+                <a class="sidebar-brand d-flex align-items-center justify-content-center" href="#">
+                    <div class="sidebar-brand-icon">
+                        <i class="fas fa-tractor"></i>
+                    </div>
+                    <div class="sidebar-brand-text mx-2">MEKALA</div>
+                </a>
+                <hr class="sidebar-divider my-0">
                 <ul class="nav flex-column" id="mainNav">
                     <li class="sidebar-heading">Main</li>
                     <li class="nav-item"><a class="nav-link active" href="#" data-section="home"><i class="fas fa-home fa-fw me-2"></i>Dashboard</a></li>
