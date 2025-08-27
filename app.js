@@ -1,5 +1,37 @@
 let healthStatusPieChartInstance = null;
 
+// Custom Chart.js plugin to display text in the center of a doughnut chart.
+const doughnutCenterText = {
+    id: 'doughnutCenterText',
+    afterDraw(chart, args, options) {
+        if (!options.text) {
+            return;
+        }
+        const { ctx, chartArea: { top, right, bottom, left } } = chart;
+        ctx.save();
+        const text = options.text;
+        const subtext = options.subtext || '';
+
+        // Main text (e.g., the total amount)
+        ctx.font = options.font || 'bold 24px sans-serif';
+        ctx.fillStyle = options.color || '#4e73df';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const centerX = (left + right) / 2;
+        const centerY = (top + bottom) / 2;
+        ctx.fillText(text, centerX, centerY - (subtext ? 10 : 0));
+
+        // Sub text (e.g., a label for the total)
+        if (subtext) {
+            ctx.font = options.subfont || '14px sans-serif';
+            ctx.fillStyle = options.subcolor || '#858796';
+            ctx.fillText(subtext, centerX, centerY + 15);
+        }
+        ctx.restore();
+    }
+};
+Chart.register(doughnutCenterText); // Register the plugin globally once.
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
 import { getDatabase, ref, onValue, off, push, update, remove, child, query } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
@@ -248,6 +280,7 @@ function applyFiltersAndRender() {
     updateScheduleView();
     updateFinancialsDashboard();
     updateWeeklyTrackingView();
+    renderFeedInventoryTable();
 }
 
 function renderAllRecordTables() {
@@ -408,7 +441,7 @@ function fetchFeedInventory() {
                 masterFeedInventory.push({ id: child.key, ...child.val() });
             });
         }
-        renderFeedInventoryTable();
+        applyFiltersAndRender(); // Re-render all views that depend on feed data, including financials.
     }, error => {
         console.error("Error fetching feed inventory:", error);
         updateElement('feedInventoryTableBody', `<tr><td colspan="4" class="text-center text-danger">Error loading feed inventory.</td></tr>`, true);
@@ -418,27 +451,66 @@ function fetchFeedInventory() {
 function renderFeedInventoryTable() {
     const tableBody = document.getElementById('feedInventoryTableBody');
     if (!tableBody) return;
+    
+    // Get global filter values
+    const yearFilter = document.getElementById('globalYearFilter').value;
+    const monthFilter = document.getElementById('globalMonthFilter').value;
 
-    // Sort by name for consistent display
-    const sortedInventory = [...masterFeedInventory].sort((a, b) => a.name.localeCompare(b.name));
+    // Filter the master list based on the global filters
+    const filteredInventory = masterFeedInventory.filter(item => {
+        if (!item.purchaseDate) return false; // Always exclude items without a date
+        const itemDate = new Date(item.purchaseDate + 'T00:00:00'); // Add time to avoid timezone issues
+        if (isNaN(itemDate.getTime())) return false; // Invalid date
+
+        const yearMatch = (yearFilter === 'all') || (itemDate.getFullYear().toString() === yearFilter);
+        const monthMatch = (monthFilter === 'all') || (itemDate.getMonth().toString() === monthFilter);
+
+        return yearMatch && monthMatch;
+    });
+
+    const sortedInventory = [...filteredInventory].sort((a, b) => a.name.localeCompare(b.name));
+
+    // This will be the sum of all initial purchases (feed + direct costs) for the FILTERED period
+    const grandTotalPurchaseCost = sortedInventory.reduce((sum, item) => {
+        const price = parseFloat(item.pricePerKg) || 0;
+        const quantity = parseFloat(item.initialQuantity ?? item.quantityOnHand) || 0;
+
+        if (quantity > 0) {
+            return sum + (price * quantity);
+        } else {
+            return sum + price;
+        }
+    }, 0);
 
     if (sortedInventory.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="4" class="text-center p-4 text-muted">No feed items in inventory. Use the form to add one.</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center p-4 text-muted">No items found for the selected period.</td></tr>`;
+        updateElement('feedInventoryTotalValue', '₹0.00');
         return;
     }
 
-    const rowsHtml = sortedInventory.map(item => `
+    const rowsHtml = sortedInventory.map(item => {
+        const price = parseFloat(item.pricePerKg) || 0;
+        const quantityOnHand = parseFloat(item.quantityOnHand) || 0;
+        
+        // Value of remaining stock for this item
+        const remainingValue = price * quantityOnHand;
+
+        return `
         <tr>
             <td class="align-middle"><strong>${item.name || 'N/A'}</strong></td>
-            <td class="align-middle">${formatDate(item.purchaseDate)}</td>
-            <td class="align-middle">₹${(item.pricePerKg || 0).toFixed(2)}</td>
-            <td class="align-middle">${(item.quantityOnHand || 0).toFixed(2)} kg</td>
-            <td class="text-center">
+            <td class="align-middle text-center">${formatDate(item.purchaseDate)}</td>
+            <td class="align-middle text-end">₹${price.toFixed(2)}</td>
+            <td class="align-middle text-end">${quantityOnHand > 0 ? `${quantityOnHand.toFixed(2)} kg` : '-'}</td>
+            <td class="align-middle text-end fw-bold">₹${remainingValue.toFixed(2)}</td>
+            <td class="text-center align-middle">
                 <button class="btn btn-sm btn-outline-primary js-edit-feed-item" data-feed-id="${item.id}" title="Edit Item"><i class="fas fa-edit"></i></button>
                 <button class="btn btn-sm btn-outline-danger js-delete-feed-item" data-feed-id="${item.id}" data-feed-name="${item.name}" title="Delete Item"><i class="fas fa-trash"></i></button>
             </td>
-        </tr>`).join('');
+        </tr>`;
+    }).join('');
+
     tableBody.innerHTML = rowsHtml;
+    updateElement('feedInventoryTotalValue', `₹${grandTotalPurchaseCost.toFixed(2)}`);
 }
 
 // --- ROW RENDERING FUNCTIONS ---
@@ -1952,7 +2024,7 @@ function updateFinancialsDashboard() {
 
     // --- Calculations for Active Flock (Operating Expenses) ---
     let operatingExpenses = 0;
-    const expenseBreakdown = { 'Feed': 0, 'Deworming': 0, 'Vaccination': 0, 'Other': 0 };
+    const expenseBreakdown = { 'Feed Used': 0, 'Deworming': 0, 'Vaccination': 0, 'Other': 0 };
     allRecords.forEach(record => {
         if (record.treatments) {
             Object.values(record.treatments).forEach(t => {
@@ -1961,7 +2033,7 @@ function updateFinancialsDashboard() {
                     operatingExpenses += cost;
                     // Aggregate for the expense breakdown chart
                     switch (t.treatmentType) {
-                        case 'Feed': expenseBreakdown['Feed'] += cost; break;
+                        case 'Feed': expenseBreakdown['Feed Used'] += cost; break;
                         case 'Deworming': expenseBreakdown['Deworming'] += cost; break;
                         case 'Vaccination': expenseBreakdown['Vaccination'] += cost; break;
                         default: expenseBreakdown['Other'] += cost; break;
@@ -1971,12 +2043,37 @@ function updateFinancialsDashboard() {
         }
     });
 
+    // --- Add direct costs from the feed inventory log ---
+    // This includes items logged as expenses, like travel, which have a quantity of 0.
+    const yearFilter = document.getElementById('globalYearFilter').value;
+    const monthFilter = document.getElementById('globalMonthFilter').value;
+
+    masterFeedInventory.forEach(item => {
+        const isDirectCost = (parseFloat(item.initialQuantity) || 0) === 0;
+        
+        if (isDirectCost && item.purchaseDate) {
+            const itemDate = new Date(item.purchaseDate + 'T00:00:00');
+            if (isNaN(itemDate.getTime())) return; // Skip invalid dates
+
+            const yearMatch = (yearFilter === 'all') || (itemDate.getFullYear().toString() === yearFilter);
+            const monthMatch = (monthFilter === 'all') || (itemDate.getMonth().toString() === monthFilter);
+
+            if (yearMatch && monthMatch) {
+                const cost = parseFloat(item.pricePerKg) || 0;
+                expenseBreakdown['Other'] += cost; // Add to the 'Other' category
+            }
+        }
+    });
+
+    // The total for the card should be the sum of all costs represented in the pie chart.
+    const totalFeedAndOtherCosts = Object.values(expenseBreakdown).reduce((sum, val) => sum + val, 0);
+
     // --- Update UI Stat Cards ---
     // These IDs are suggestions for a new, clearer layout.
     updateElement('financialsRevenue', `₹${revenue.toFixed(2)}`);
     updateElement('financialsCogs', `₹${costOfGoodsSold.toFixed(2)}`);
     updateElement('financialsGrossProfit', `₹${grossProfit.toFixed(2)}`);
-    updateElement('financialsOpEx', `₹${operatingExpenses.toFixed(2)}`);
+    updateElement('financialsOpEx', `₹${totalFeedAndOtherCosts.toFixed(2)}`);
 
     // Set colors for profit/loss cards
     const grossProfitEl = document.getElementById('financialsGrossProfit');
@@ -1989,6 +2086,7 @@ function updateFinancialsDashboard() {
     renderFinancialsChart(soldRecords); // Pass soldRecords to the chart function
     renderExpenseBreakdownChart(expenseBreakdown); // Pass the calculated breakdown
     renderFinancialsDetailTable(soldRecords); // New function to render the detailed table
+    renderMonthlyFinancialSummaryTable();
 }
 
 function renderFinancialsChart(records) {
@@ -2048,56 +2146,73 @@ function renderExpenseBreakdownChart(expenseCategories) {
     // The expenseCategories object is now calculated in updateFinancialsDashboard
     // and passed into this function.
     if (!expenseCategories) {
-        // Recalculate if not provided, for backward compatibility or other calls.
-        expenseCategories = { 'Feed': 0, 'Deworming': 0, 'Vaccination': 0, 'Other': 0 };
-        const allFilteredRecords = [...allRecords, ...soldRecords];
-        allFilteredRecords.forEach(record => {
-            if (record.treatments) {
-                Object.values(record.treatments).forEach(t => {
-                    const cost = parseFloat(t.cost) || 0;
-                    if (cost > 0) {
-                        switch (t.treatmentType) {
-                            case 'Feed': expenseCategories['Feed'] += cost; break;
-                            case 'Deworming': expenseCategories['Deworming'] += cost; break;
-                            case 'Vaccination': expenseCategories['Vaccination'] += cost; break;
-                            default: expenseCategories['Other'] += cost; break;
-                        }
-                    }
-                });
-            }
-        });
+        // This fallback should ideally not be needed if called from updateFinancialsDashboard,
+        // but it's good for safety.
+        expenseCategories = { 'Feed & Other Costs': 0 };
     }
 
     const chartEl = document.getElementById('expenseBreakdownChart');
     const noDataEl = document.getElementById('noExpenseChartData');
     if (!chartEl || !noDataEl) return;
 
-    const labels = Object.keys(expenseCategories);
-    const data = Object.values(expenseCategories);
-    const totalExpenses = data.reduce((sum, val) => sum + val, 0);
-
-    if (totalExpenses === 0) {
-        chartEl.style.display = 'none';
-        noDataEl.style.display = 'block';
-        if (expenseBreakdownChart) { expenseBreakdownChart.destroy(); expenseBreakdownChart = null; }
-        return;
-    }
-
+    // Always show the chart canvas and hide the "no data" message.
+    // The total will be displayed inside the chart itself.
     chartEl.style.display = 'block';
     noDataEl.style.display = 'none';
 
     if (expenseBreakdownChart) expenseBreakdownChart.destroy();
 
+    const labels = Object.keys(expenseCategories);
+    const data = Object.values(expenseCategories);
+    const totalExpenses = data.reduce((sum, val) => sum + val, 0);
+
+    // Filter out categories with no cost to avoid cluttering the chart.
+    const chartData = data.filter(d => d > 0);
+    const chartLabels = labels.filter((_, i) => data[i] > 0);
+
+    // If there's no data, we'll show a single grey segment to create the doughnut shape.
+    const finalData = chartData.length > 0 ? chartData : [1];
+    const finalLabels = chartLabels.length > 0 ? chartLabels : ['No Expenses'];
+    const finalColors = chartData.length > 0
+        ? ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796']
+        : ['#f1f3f5']; // A light grey for the empty state
+
     expenseBreakdownChart = new Chart(chartEl.getContext('2d'), {
         type: 'doughnut',
         data: {
-            labels: labels.filter((_, i) => data[i] > 0),
+            labels: finalLabels,
             datasets: [{
-                data: data.filter(d => d > 0),
-                backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b'],
+                data: finalData,
+                backgroundColor: finalColors,
+                borderColor: '#fff',
+                borderWidth: chartData.length > 0 ? 2 : 0, // No border for the empty state
             }]
         },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '80%', plugins: { legend: { display: true, position: 'bottom' }, tooltip: { callbacks: { label: context => `${context.label}: ₹${context.raw.toFixed(2)} (${((context.raw / totalExpenses) * 100).toFixed(1)}%)` } } } }
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '80%',
+            plugins: {
+                doughnutCenterText: {
+                    text: `₹${totalExpenses.toFixed(2)}`,
+                    subtext: 'Total Costs',
+                    font: 'bold 22px sans-serif',
+                    color: '#343a40',
+                    subfont: '14px sans-serif',
+                    subcolor: '#6c757d'
+                },
+                legend: {
+                    display: chartData.length > 0, // Only show legend if there's data
+                    position: 'bottom'
+                },
+                tooltip: {
+                    enabled: chartData.length > 0, // Only show tooltips if there's data
+                    callbacks: {
+                        label: context => `${context.label}: ₹${context.raw.toFixed(2)} (${totalExpenses > 0 ? ((context.raw / totalExpenses) * 100).toFixed(1) : 0}%)`
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -2122,6 +2237,12 @@ function renderFinancialsDetailTable(records) {
     // Sort by sale date, newest first
     const sortedRecords = [...records].sort((a, b) => new Date(b.saleDate) - new Date(a.saleDate));
 
+    let totalSalePrice = 0;
+    let totalBuyingPrice = 0;
+    let totalTreatmentCosts = 0;
+    let totalCogs = 0;
+    let totalProfit = 0;
+
     const rowsHtml = sortedRecords.map(record => {
         const buyingPrice = parseFloat(record.buyingPrice) || 0;
         const salePrice = parseFloat(record.salePrice) || 0;
@@ -2130,6 +2251,13 @@ function renderFinancialsDetailTable(records) {
             : 0;
         const totalCost = buyingPrice + treatmentCosts;
         const profit = salePrice - totalCost;
+
+        // Accumulate totals
+        totalSalePrice += salePrice;
+        totalBuyingPrice += buyingPrice;
+        totalTreatmentCosts += treatmentCosts;
+        totalCogs += totalCost;
+        totalProfit += profit;
 
         let profitClass = 'text-body-secondary';
         let profitSign = '';
@@ -2149,7 +2277,156 @@ function renderFinancialsDetailTable(records) {
         `;
     }).join('');
 
-    tableBody.innerHTML = rowsHtml;
+    // Create the footer row with totals
+    const profitClass = totalProfit >= 0 ? 'text-success' : 'text-danger';
+    const profitSign = totalProfit >= 0 ? '+' : '';
+    const footerHtml = `
+        <tr class="fw-bold table-light" style="border-top: 2px solid #dee2e6;">
+            <td colspan="2" class="text-end">Period Totals:</td>
+            <td class="text-end">₹${totalSalePrice.toFixed(2)}</td>
+            <td class="text-end">₹${totalBuyingPrice.toFixed(2)}</td>
+            <td class="text-end">₹${totalTreatmentCosts.toFixed(2)}</td>
+            <td class="text-end">₹${totalCogs.toFixed(2)}</td>
+            <td class="text-end ${profitClass}">${profitSign}₹${totalProfit.toFixed(2)}</td>
+        </tr>
+    `;
+
+    tableBody.innerHTML = rowsHtml + footerHtml;
+}
+
+function renderMonthlyFinancialSummaryTable() {
+    const tableBody = document.getElementById('monthlyFinancialsTableBody');
+    if (!tableBody) {
+        console.warn("UI Warning: Element with ID 'monthlyFinancialsTableBody' not found.");
+        return;
+    }
+
+    const monthlyData = {};
+
+    // 1. Aggregate revenue and COGS from sold records
+    // This uses `soldRecords`, which is already filtered by the global date filters.
+    soldRecords.forEach(record => {
+        if (!record.saleDate) return;
+        const month = record.saleDate.substring(0, 7); // YYYY-MM
+        if (!monthlyData[month]) {
+            monthlyData[month] = { revenue: 0, cogs: 0, feedPurchases: 0 };
+        }
+        const salePrice = parseFloat(record.salePrice) || 0;
+        const buyingPrice = parseFloat(record.buyingPrice) || 0;
+        const treatmentCosts = (record.treatments && typeof record.treatments === 'object')
+            ? Object.values(record.treatments).reduce((sum, t) => sum + (parseFloat(t.cost) || 0), 0)
+            : 0;
+        
+        monthlyData[month].revenue += salePrice;
+        monthlyData[month].cogs += (buyingPrice + treatmentCosts);
+    });
+
+    // Get global filter values to apply them to the feed inventory
+    const yearFilter = document.getElementById('globalYearFilter').value;
+    const monthFilter = document.getElementById('globalMonthFilter').value;
+
+    // 2. Aggregate feed purchases from the master inventory list, applying filters.
+    masterFeedInventory.forEach(item => {
+        if (item.purchaseDate) {
+            // Apply global filters to feed purchases
+            const itemDate = new Date(item.purchaseDate + 'T00:00:00');
+            if (isNaN(itemDate.getTime())) return; // Skip invalid dates
+
+            const yearMatch = (yearFilter === 'all') || (itemDate.getFullYear().toString() === yearFilter);
+            const monthMatch = (monthFilter === 'all') || (itemDate.getMonth().toString() === monthFilter);
+
+            if (!yearMatch || !monthMatch) return; // Skip if it doesn't match the filter
+
+            const month = item.purchaseDate.substring(0, 7);
+            if (!monthlyData[month]) {
+                monthlyData[month] = { revenue: 0, cogs: 0, feedPurchases: 0 };
+            }
+            
+            const price = parseFloat(item.pricePerKg) || 0;
+            const quantity = parseFloat(item.initialQuantity ?? item.quantityOnHand) || 0;
+            let purchaseCost = 0;
+
+            if (quantity > 0) {
+                // It's a stockable item, calculate total purchase price.
+                purchaseCost = price * quantity;
+            } else {
+                // It's a direct expense (like travel cost), just add the price.
+                purchaseCost = price;
+            }
+            monthlyData[month].feedPurchases += purchaseCost;
+        }
+    });
+
+    const sortedMonths = Object.keys(monthlyData).sort().reverse(); // Newest first
+
+    if (sortedMonths.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center p-4 text-muted">No financial data for the selected period.</td></tr>`;
+        return;
+    }
+
+    let totalRevenue = 0, totalCogs = 0, totalGrossProfit = 0, totalFeedPurchases = 0, totalNetProfit = 0;
+
+    const rowsHtml = sortedMonths.map(monthKey => {
+        const data = monthlyData[monthKey];
+        const grossProfit = data.revenue - data.cogs;
+        const netProfit = grossProfit - data.feedPurchases;
+
+        // Accumulate totals
+        totalRevenue += data.revenue;
+        totalCogs += data.cogs;
+        totalGrossProfit += grossProfit;
+        totalFeedPurchases += data.feedPurchases;
+        totalNetProfit += netProfit;
+
+        const [year, monthNum] = monthKey.split('-');
+        const monthName = new Date(year, monthNum - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
+        const profitClass = netProfit >= 0 ? 'text-success' : 'text-danger';
+
+        return `
+            <tr>
+                <td><strong>${monthName}</strong></td>
+                <td class="text-end">₹${data.revenue.toFixed(2)}</td>
+                <td class="text-end">₹${data.cogs.toFixed(2)}</td>
+                <td class="text-end">₹${grossProfit.toFixed(2)}</td>
+                <td class="text-end">₹${data.feedPurchases.toFixed(2)}</td>
+                <td class="text-end fw-bold ${profitClass}">₹${netProfit.toFixed(2)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    // Footer with totals
+    const totalProfitClass = totalNetProfit >= 0 ? 'text-success' : 'text-danger';
+    const footerHtml = `
+        <tr class="fw-bold table-dark">
+            <td>Period Totals</td>
+            <td class="text-end">₹${totalRevenue.toFixed(2)}</td>
+            <td class="text-end">₹${totalCogs.toFixed(2)}</td>
+            <td class="text-end">₹${totalGrossProfit.toFixed(2)}</td>
+            <td class="text-end">₹${totalFeedPurchases.toFixed(2)}</td>
+            <td class="text-end ${totalProfitClass}">₹${totalNetProfit.toFixed(2)}</td>
+        </tr>
+    `;
+
+    tableBody.innerHTML = rowsHtml + footerHtml;
+}
+
+function handleAddFeedItem(e) {
+    e.preventDefault();
+    const quantity = parseFloat(document.getElementById('feedQuantity').value);
+    const newFeedItem = {
+        name: document.getElementById('feedName').value.trim(),
+        pricePerKg: parseFloat(document.getElementById('feedPricePerKg').value),
+        purchaseDate: document.getElementById('feedPurchaseDate').value,
+        quantityOnHand: quantity,
+        initialQuantity: quantity // Add this field
+    };
+
+    if (!newFeedItem.name || isNaN(newFeedItem.pricePerKg) || isNaN(newFeedItem.quantityOnHand)) {
+        return alert('Please fill out all fields with valid numbers.');
+    }
+
+    push(ref(db, 'feedInventory'), newFeedItem).then(() => e.target.reset());
 }
 
 // --- FORM & MODAL HANDLERS ---
@@ -2388,27 +2665,29 @@ function openTreatmentLog(recordId, sheepId) {
         const treatmentLogTbody = document.getElementById('treatmentLogTbody');
         const treatmentsData = snapshot.val();
         if (treatmentsData) {
-            const treatments = Object.entries(treatmentsData).sort((a, b) => new Date(b[1].treatmentDate) - new Date(a[1].treatmentDate));
-            treatmentLogTbody.innerHTML = treatments.map(([id, t]) => {
-                const costHtml = t.cost ? `₹${parseFloat(t.cost).toFixed(2)}` : 'N/A';
-                const typeHtml = t.treatmentType || t.type || 'General'; // Backward compatibility for 'type'
+            const sortedEntries = Object.entries(treatmentsData).sort((a, b) => new Date(b[1].treatmentDate) - new Date(a[1].treatmentDate));
+            
+            const historyHtml = sortedEntries.map(([entryId, entry]) => {
+                // The headers for this modal are: Date, Symptoms, Medication, Dosage, Cost, Notes, Actions
+                const costHtml = entry.cost ? `₹${parseFloat(entry.cost).toFixed(2)}` : '';
                 return `
-                <tr>
-                    <td>${formatDate(t.treatmentDate)}</td>
-                    <td>${typeHtml}</td>
-                    <td>${costHtml}</td>
-                    <td>${t.symptoms || ''}</td>
-                    <td>${t.medication || ''}</td>
-                    <td>${t.dosage || ''}</td>
-                    <td>${t.treatmentNotes || ''}</td>
-                    <td>
-                        <button class="btn btn-sm btn-outline-primary js-edit-treatment" data-record-id="${recordId}" data-entry-id="${id}" title="Edit Entry"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-sm btn-outline-danger js-delete-treatment" data-record-id="${recordId}" data-entry-id="${id}" title="Delete Entry"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>`;
+                    <tr>
+                        <td>${formatDate(entry.treatmentDate)}</td>
+                        <td>${entry.symptoms || ''}</td>
+                        <td>${entry.medication || ''}</td>
+                        <td>${entry.dosage || ''}</td>
+                        <td class="text-end">${costHtml}</td>
+                        <td>${entry.treatmentNotes || ''}</td>
+                        <td class="text-center">
+                            <button class="btn btn-sm btn-outline-primary js-edit-treatment" data-record-id="${recordId}" data-entry-id="${entryId}" title="Edit"><i class="fas fa-edit fa-fw"></i></button>
+                            <button class="btn btn-sm btn-outline-danger js-delete-treatment" data-record-id="${recordId}" data-entry-id="${entryId}" title="Delete"><i class="fas fa-trash fa-fw"></i></button>
+                        </td>
+                    </tr>
+                `;
             }).join('');
+            treatmentLogTbody.innerHTML = historyHtml;
         } else {
-            treatmentLogTbody.innerHTML = '<tr><td colspan="8" class="text-center">No treatments logged.</td></tr>';
+            treatmentLogTbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No treatment history found.</td></tr>';
         }
     });
 
@@ -2666,22 +2945,6 @@ function handleUpdateSoldRecord(e) {
         });
 }
 
-function handleAddFeedItem(e) {
-    e.preventDefault();
-    const newFeedItem = {
-        name: document.getElementById('feedName').value.trim(),
-        pricePerKg: parseFloat(document.getElementById('feedPricePerKg').value),
-        purchaseDate: document.getElementById('feedPurchaseDate').value,
-        quantityOnHand: parseFloat(document.getElementById('feedQuantity').value)
-    };
-
-    if (!newFeedItem.name || isNaN(newFeedItem.pricePerKg) || isNaN(newFeedItem.quantityOnHand)) {
-        return alert('Please fill out all fields with valid numbers.');
-    }
-
-    push(ref(db, 'feedInventory'), newFeedItem).then(() => e.target.reset());
-}
-
 function openEditFeedModal(feedId) {
     const modalEl = document.getElementById('editFeedModal');
     if (!modalEl) {
@@ -2722,6 +2985,7 @@ function handleUpdateFeedItem(e) {
         editFeedModal.hide();
     });
 }
+
 
 // --- SHEEP PROFILE SECTION ---
 
