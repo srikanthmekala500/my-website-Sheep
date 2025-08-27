@@ -172,8 +172,7 @@
 </head>
 <body>
     <header class="header-section text-center">
-        <img src="./mekals logo.Jpg.jpg" alt="Your Farm Logo" class="header-logo"> <h1 class="display-4 text-primary">
-        <h6 class="display-4 text-primary">MEKALA</h6></h1>
+        <img src="./mekals logo.Jpg.jpg" alt="Your Farm Logo" class="header-logo"> <h1 class="display-4 text-primary">MEKALA</h1>
         <p class="lead text-muted">Simple records for stronger flocks
 
 </p>
@@ -891,63 +890,78 @@
              FEED INVENTORY SECTION
              ================================================================== -->
         <div id="feedSection" class="hidden">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Feed Inventory & Cost Management</h1>
+             <!-- 1. Page Header -->
+            <div class="d-flex align-items-center mb-4">
+                <i class="fas fa-wheat-awn fa-2x text-primary me-3"></i>
+                <div>
+                    <h2 class="mb-0">Feed Inventory & Cost Management</h2>
+                    <p class="text-muted mb-0">Track feed stock, one-time costs, and total inventory value.</p>
+                </div>
             </div>
-
+         
             <div class="row">
-                <!-- Add New Feed Item Card -->
+                 <!-- 2. Add New Item Form (Improved Layout) -->
                 <div class="col-lg-4 mb-4">
-                    <div class="card shadow-sm">
-                        <div class="card-header">
-                            <h5 class="mb-0">Add New Feed Item</h5>
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="fas fa-plus-circle me-2"></i>Add New Item</h5>
                         </div>
                         <div class="card-body">
                             <form id="addFeedForm">
                                 <div class="mb-3">
-                                    <label for="feedName" class="form-label">Feed Name</label>
-                                    <input type="text" class="form-control" id="feedName" placeholder="e.g., Starter Pellets" required>
+                                    <label for="feedName" class="form-label">Item Name</label>
+                                    <input type="text" class="form-control" id="feedName" placeholder="e.g., Starter Pellets, Travel Cost" required>
                                 </div>
                                 <div class="mb-3">
                                     <label for="feedPurchaseDate" class="form-label">Purchase Date</label>
                                     <input type="date" class="form-control" id="feedPurchaseDate" required>
                                 </div>
-                                <div class="mb-3">
-                                    <label for="feedPricePerKg" class="form-label">Price per KG (₹)</label>
-                                    <input type="number" step="0.01" class="form-control" id="feedPricePerKg" placeholder="e.g., 25.50" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="feedQuantity" class="form-label">Quantity on Hand (KG)</label>
-                                    <input type="number" step="0.1" class="form-control" id="feedQuantity" placeholder="e.g., 50" required>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="feedPricePerKg" class="form-label">Price/Cost (₹)</label>
+                                        <input type="number" step="0.01" class="form-control" id="feedPricePerKg" placeholder="25.50" required>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="feedQuantity" class="form-label">Quantity (KG)</label>
+                                        <input type="number" step="0.1" class="form-control" id="feedQuantity" placeholder="50" required>
+                                        <div class="form-text">Enter 0 for non-inventory costs.</div>
+                                    </div>
                                 </div>
                                 <div class="d-grid">
-                                    <button type="submit" class="btn btn-primary">Add to Inventory</button>
+                                    <button type="submit" class="btn btn-primary">Add to Log</button>
                                 </div>
                             </form>
                         </div>
                     </div>
                 </div>
-
-                <!-- Feed Inventory Table Card -->
+         
+                 <!-- 3. Inventory Table (Improved) -->
                 <div class="col-lg-8 mb-4">
                     <div class="card shadow-sm">
                         <div class="card-header">
-                            <h5 class="mb-0">Current Inventory</h5>
+                            <h5 class="mb-0"><i class="fas fa-clipboard-list me-2"></i>Current Log</h5>
                         </div>
-                        <div class="table-responsive">
+                        <div class="table-responsive table-scrollable">
                             <table class="table table-striped table-hover mb-0">
-                                <thead>
+                                <thead class="table-dark">
                                     <tr>
-                                        <th>Feed Name</th>
-                                        <th>Purchase Date</th>
-                                        <th>Price per KG</th>
-                                        <th>Quantity on Hand</th>
+                                        <th>Item Name</th>
+                                        <th class="text-center">Purchase Date</th>
+                                        <th class="text-end">Price/Cost (₹)</th>
+                                        <th class="text-end">Quantity on Hand</th>
+                                        <th class="text-end">Total Value (₹)</th>
                                         <th class="text-center">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="feedInventoryTableBody">
-                                    <!-- Feed items will be rendered here by JavaScript -->
+                                     <!-- Feed items will be rendered here by JavaScript -->
                                 </tbody>
+                                <tfoot class="table-light fw-bold">
+                                    <tr>
+                                        <td colspan="4" class="text-end fs-5">Grand Total:</td>
+                                        <td id="feedInventoryTotalValue" class="text-end fs-5" colspan="2">₹0.00</td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>
@@ -955,89 +969,102 @@
             </div>
         </div>
 
-        <!-- =================================================================
+         <!-- =================================================================
              FINANCIALS SECTION
              ================================================================== -->
         <div id="financialsSection" class="hidden">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Financials Dashboard</h1>
-                <p class="text-muted mb-0">Metrics below reflect the currently selected global date filters.</p>
+             <!-- 1. Page Header -->
+            <div class="d-flex align-items-center mb-4">
+                <i class="fas fa-chart-pie fa-2x text-primary me-3"></i>
+                <div>
+                    <h2 class="mb-0">Financials Dashboard</h2>
+                    <p class="text-muted mb-0">Analyze revenue, costs, and profitability for the selected period.</p>
+                </div>
             </div>
 
-            <!-- Financial Summary Cards -->
+             <!-- 2. Key Metric Cards -->
             <div class="row">
-                <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-primary shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Investment (New Sheep)</div><div class="h5 mb-0 font-weight-bold text-gray-800" id="financialsInvestment">₹0.00</div></div><div class="col-auto"><i class="fas fa-dolly fa-2x text-gray-300"></i></div></div></div></div></div>
-                <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-danger shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total Expenses (Care & Feed)</div><div class="h5 mb-0 font-weight-bold text-gray-800" id="financialsExpenses">₹0.00</div></div><div class="col-auto"><i class="fas fa-file-invoice-dollar fa-2x text-gray-300"></i></div></div></div></div></div>
-                <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-success shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-success text-uppercase mb-1">Revenue (From Sales)</div><div class="h5 mb-0 font-weight-bold text-gray-800" id="financialsRevenue">₹0.00</div></div><div class="col-auto"><i class="fas fa-dollar-sign fa-2x text-gray-300"></i></div></div></div></div></div>
-                <div class="col-xl-3 col-md-6 mb-4"><div class="card border-left-info shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-info text-uppercase mb-1">Profit / Loss</div><div class="h5 mb-0 font-weight-bold text-gray-800" id="financialsProfitLoss">₹0.00</div></div><div class="col-auto"><i class="fas fa-balance-scale fa-2x text-gray-300"></i></div></div></div></div></div>
-                <!-- Add this card inside the 'row' div for the financial summary cards -->
                 <div class="col-xl-3 col-md-6 mb-4">
-                    <div class="card border-left-dark shadow h-100 py-2">
-                        <div class="card-body">
-                            <div class="row no-gutters align-items-center">
-                                <div class="col mr-2">
-                                    <div class="text-xs font-weight-bold text-dark text-uppercase mb-1" title="Revenue - (All Investment + All Expenses) + Feed Inventory Value">Overall Net Position</div>
-                                    <div class="h5 mb-0 font-weight-bold text-gray-800" id="financialsGrandTotal">₹0.00</div>
-                                </div>
-                                <div class="col-auto">
-                                    <i class="fas fa-calculator fa-2x text-gray-300"></i>
-                                </div>
-                            </div>
+                    <div class="card bg-primary text-white shadow h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-center"><i class="fas fa-dollar-sign fa-3x"></i><div class="text-end"><div id="financialsRevenue" class="fs-4 fw-bold">₹0.00</div><div class="small text-white-75">Total Revenue</div></div></div></div></div>
+                </div>
+                <div class="col-xl-3 col-md-6 mb-4">
+                    <div class="card border-left-danger shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Cost of Goods Sold</div><div id="financialsCogs" class="h5 mb-0 font-weight-bold text-gray-800">₹0.00</div></div><div class="col-auto"><i class="fas fa-receipt fa-2x text-gray-300"></i></div></div></div></div>
+                </div>
+                <div class="col-xl-3 col-md-6 mb-4">
+                    <div class="card bg-info text-dark shadow h-100"><div class="card-body"><div class="d-flex justify-content-between align-items-center"><i class="fas fa-cash-register fa-3x"></i><div class="text-end"><div id="financialsGrossProfit" class="fs-4 fw-bold">₹0.00</div><div class="small">Gross Profit</div></div></div></div></div>
+                </div>
+                <div class="col-xl-3 col-md-6 mb-4">
+                    <div class="card border-left-warning shadow h-100 py-2"><div class="card-body"><div class="row no-gutters align-items-center"><div class="col mr-2"><div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Feed & Other Costs</div><div id="financialsOpEx" class="h5 mb-0 font-weight-bold text-gray-800">₹0.00</div></div><div class="col-auto"><i class="fas fa-file-invoice-dollar fa-2x text-gray-300"></i></div></div></div></div>
+                </div>
+            </div>
+
+             <!-- 3. Performance Overview Card -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-area me-2"></i>Performance Overview</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-lg-8 mb-4 mb-lg-0">
+                            <h6 class="text-center text-muted">Monthly Performance (Revenue vs. Cost)</h6>
+                            <div class="chart-area" style="height: 320px;"><canvas id="financialsChart"></canvas></div>
+                            <div id="noFinancialsChartData" class="text-center" style="display: none;">No data for this period.</div>
+                        </div>
+                        <div class="col-lg-4">
+                            <h6 class="text-center text-muted">Feed & Other Costs</h6>
+                            <div class="chart-pie pt-4" style="height: 320px;"><canvas id="expenseBreakdownChart"></canvas></div>
+                            <div id="noExpenseChartData" class="text-center" style="display: none;">No expenses for this period.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Financials Chart -->
-            <div class="row">
-                <div class="col-12">
-                    <div class="card shadow-sm">
-                        <div class="card-header">
-                            <h6 class="m-0 font-weight-bold text-primary">Monthly Revenue vs. Expenses</h6>
-                        </div>
-                        <div class="card-body">
-                            <div style="position: relative; height:350px"><canvas id="financialsChart"></canvas></div>
-                            <div id="noFinancialsChartData" class="text-center text-muted p-4" style="display: none;">
-                                Not enough data to generate a chart for the selected period.
-                            </div>
-                        </div>
+             <!-- 4. Data Tables -->
+            <!-- Monthly Summary Table -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Monthly Profit / Loss Summary</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered mb-0" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Month</th>
+                                    <th class="text-end">Revenue</th>
+                                    <th class="text-end">COGS</th>
+                                    <th class="text-end">Gross Profit</th>
+                                    <th class="text-end">Feed & Other Costs</th>
+                                    <th class="text-end">Net Profit / Loss</th>
+                                </tr>
+                            </thead>
+                            <tbody id="monthlyFinancialsTableBody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
 
-            <!-- Detailed Breakdown Row -->
-            <div class="row mt-4">
-                <div class="col-lg-8">
-                    <div class="card shadow-sm">
-                        <div class="card-header py-3">
-                            <h6 class="m-0 font-weight-bold text-primary">Detailed Financial Breakdown</h6>
-                        </div>
-                        <div class="card-body">
-                            <p class="small text-muted mb-2">All values below are based on the currently selected global date filters.</p>
-                            <div class="table-responsive">
-                                <table class="table table-sm table-bordered mb-0">
-                                    <tbody>
-                                        <tr>
-                                            <td>Total Revenue from Sales</td>
-                                            <td class="text-end fs-6" id="breakdownRevenue">₹0.00</td>
-                                        </tr>
-                                        <tr class="table-danger-light">
-                                            <td>(-) Total Investment (All Sheep in Period)</td>
-                                            <td class="text-end fs-6" id="breakdownInvestment">₹0.00</td>
-                                        </tr>
-                                        <tr class="table-danger-light">
-                                            <td>(-) Total Expenses (Care &amp; Feed)</td>
-                                            <td class="text-end fs-6" id="breakdownExpenses">₹0.00</td>
-                                        </tr>
-                                        <tr class="table-warning-light">
-                                            <td>(-) Current Feed Inventory Value</td>
-                                            <td class="text-end fs-6" id="breakdownFeedValue">₹0.00</td>
-                                        </tr>
-                                    </tbody>
-                                    <tfoot class="table-group-divider"><tr class="table-dark"><td class="fw-bold fs-5">Overall Net Position</td><td class="text-end fw-bold fs-5" id="breakdownGrandTotal">₹0.00</td></tr></tfoot>
-                                </table>
-                            </div>
-                        </div>
+            <!-- Detailed Sales Breakdown Table -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Detailed Sales Breakdown (Period)</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped mb-0" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Sheep ID</th>
+                                    <th>Sale Date</th>
+                                    <th class="text-end">Sale Price</th>
+                                    <th class="text-end">Buying Price</th>
+                                    <th class="text-end">Treatment Costs</th>
+                                    <th class="text-end">Total Cost (COGS)</th>
+                                    <th class="text-end">Profit / Loss</th>
+                                </tr>
+                            </thead>
+                            <tbody id="financialsDetailTableBody"></tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -1197,48 +1224,110 @@
         </div>
 
         <!-- Sale Modal -->
-        <div class="modal fade" id="saleSheepModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content needs-navigation" id="saleSheepForm"><div class="modal-header"><h5 class="modal-title">Sale Sheep Record</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="saleRecordId"><div class="mb-3"><label for="saleDate" class="form-label">Date of Sale</label><input type="date" class="form-control" id="saleDate" required></div><div class="mb-3"><label for="salePrice" class="form-label">Sale Price</label><input type="number" step="0.01" class="form-control" id="salePrice" required></div><div class="mb-3"><label for="saleBuyer" class="form-label">Buyer Name</label><input type="text" class="form-control" id="saleBuyer"></div><div class="mb-3"><label for="saleNotes" class="form-label">Sale Notes</label><textarea class="form-control" id="saleNotes" rows="4"></textarea></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-success">Confirm Sale</button></div></form></div></div>
+        <div class="modal fade" id="saleSheepModal" tabindex="-1">
+            <div class="modal-dialog">
+                <form class="modal-content needs-navigation" id="saleSheepForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Sale Sheep Record</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body"><input type="hidden" id="saleRecordId">
+                        <div class="mb-3"><label for="saleDate" class="form-label">Date of Sale</label><input type="date" class="form-control" id="saleDate" required></div>
+                        <div class="mb-3"><label for="salePrice" class="form-label">Sale Price</label><input type="number" step="0.01" class="form-control" id="salePrice" required></div>
+                        <div class="mb-3"><label for="saleBuyer" class="form-label">Buyer Name</label><input type="text" class="form-control" id="saleBuyer"></div>
+                        <div class="mb-3"><label for="saleNotes" class="form-label">Sale Notes</label><textarea class="form-control" id="saleNotes" rows="4"></textarea></div>
+                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-success">Confirm Sale</button></div>
+                </form>
+            </div>
+        </div>
         
         <!-- Manage Treatments Modal -->
-        <div class="modal fade" id="treatmentLogModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Treatment Log for Sheep: <span id="modalSheepId"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><h6>Add/Edit Treatment Entry</h6>
-            <form id="addTreatmentForm" class="p-3 mb-4 bg-light rounded border needs-navigation">
-                <input type="hidden" id="currentSheepRecordId"><input type="hidden" id="treatmentEntryId">
-                <div class="row">
-                    <div class="col-md-6 mb-3"><label for="treatmentDate" class="form-label">Treatment Date</label><input type="date" class="form-control" id="treatmentDate" required></div>
-                    <div class="col-md-6 mb-3"><label for="treatmentType" class="form-label">Treatment Type</label><select id="treatmentType" class="form-select" required><option value="General">General</option><option value="Deworming">Deworming</option><option value="Vaccination">Vaccination</option><option value="Feed">Feed</option><option value="Other">Other</option></select></div>
-                </div>
-                <!-- Dynamic fields for Feed vs. Medication -->
-                <div id="feedSpecificFields" class="hidden">
-                    <div class="row">
-                        <div class="col-md-6 mb-3"><label for="treatmentFeedType" class="form-label">Feed Type</label><select id="treatmentFeedType" class="form-select"></select></div>
-                        <div class="col-md-6 mb-3"><label for="dosage" class="form-label">Quantity Used (KG)</label><input type="number" step="0.1" class="form-control" id="dosage" placeholder="e.g., 1.5"></div>
+        <div class="modal fade" id="treatmentLogModal" tabindex="-1">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Treatment Log for Sheep: <span id="modalSheepId"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <h6>Add/Edit Treatment Entry</h6>
+                        <form id="addTreatmentForm" class="p-3 mb-4 bg-light rounded border needs-navigation">
+                            <input type="hidden" id="currentSheepRecordId"><input type="hidden" id="treatmentEntryId">
+                            <div class="row">
+                                <div class="col-md-6 mb-3"><label for="treatmentDate" class="form-label">Treatment Date</label><input type="date" class="form-control" id="treatmentDate" required></div>
+                                <div class="col-md-6 mb-3"><label for="treatmentType" class="form-label">Treatment Type</label><select id="treatmentType" class="form-select" required><option value="General">General</option><option value="Deworming">Deworming</option><option value="Vaccination">Vaccination</option><option value="Feed">Feed</option><option value="Other">Other</option></select></div>
+                            </div>
+                            <!-- Dynamic fields for Feed vs. Medication -->
+                            <div id="feedSpecificFields" class="hidden">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3"><label for="treatmentFeedType" class="form-label">Feed Type</label><select id="treatmentFeedType" class="form-select"></select></div>
+                                    <div class="col-md-6 mb-3"><label for="dosage" class="form-label">Quantity Used (KG)</label><input type="number" step="0.1" class="form-control" id="dosage" placeholder="e.g., 1.5"></div>
+                                </div>
+                            </div>
+                            <div id="medicationField">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3"><label for="medication" class="form-label">Medication/Treatment</label><input type="text" class="form-control" id="medication" placeholder="e.g., Penicillin, Ivermectin"></div>
+                                    <div class="col-md-6 mb-3"><label for="dosageText" class="form-label">Dosage</label><input type="text" class="form-control" id="dosageText" placeholder="e.g., 5ml, 1 tablet"></div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="treatmentCost" class="form-label">Cost (₹)</label>
+                                    <input type="number" step="0.01" class="form-control" id="treatmentCost" placeholder="e.g., 150.50">
+                                </div>
+                                <div class="col-md-6 mb-3"><label for="treatmentWeight" class="form-label">Weight (kg) <span class="text-muted">(Optional)</span></label><input type="number" step="0.1" class="form-control" id="treatmentWeight" placeholder="Log weight with treatment" aria-describedby="weightHelp">
+                                    <div id="weightHelp" class="form-text">This will also create a separate entry in the Weight Tracking section.</div>
+                                </div>
+                            </div>
+                            <div class="mb-3"><label for="symptoms" class="form-label">Symptoms Observed</label><textarea class="form-control" id="symptoms" rows="2" placeholder="e.g., Limping, coughing, fever"></textarea></div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3"><label for="followUpDate" class="form-label">Follow-up Date (for specific re-checks)</label><input type="date" class="form-control" id="followUpDate"></div>
+                            </div>
+                            <div class="mb-3"><label for="treatmentNotes" class="form-label">Notes</label><textarea class="form-control" id="treatmentNotes" rows="2" aria-describedby="treatmentNotesHelp"></textarea>
+                                <div id="treatmentNotesHelp" class="form-text">For Deworming/Vaccination, these notes (e.g., brand name) will appear on the Health Schedule.</div>
+                            </div>
+                            <button type="submit" class="btn btn-success">Save Entry</button>
+                            <button type="button" class="btn btn-secondary ms-2" id="clearTreatmentFormBtn">Clear Form</button>
+                        </form>
+                        <h6 class="mt-4">Treatment History</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Symptoms</th>
+                                        <th>Medication</th>
+                                        <th>Dosage</th>
+                                        <th class="text-end">Cost (₹)</th>
+                                        <th>Notes</th>
+                                        <th class="text-center">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="treatmentLogTbody"></tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
-                <div id="medicationField">
-                    <div class="row">
-                        <div class="col-md-6 mb-3"><label for="medication" class="form-label">Medication/Treatment</label><input type="text" class="form-control" id="medication" placeholder="e.g., Penicillin, Ivermectin"></div>
-                        <div class="col-md-6 mb-3"><label for="dosageText" class="form-label">Dosage</label><input type="text" class="form-control" id="dosageText" placeholder="e.g., 5ml, 1 tablet"></div>
-                    </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label for="treatmentCost" class="form-label">Cost (₹)</label>
-                        <input type="number" step="0.01" class="form-control" id="treatmentCost" placeholder="e.g., 150.50">
-                    </div>
-                    <div class="col-md-6 mb-3"><label for="treatmentWeight" class="form-label">Weight (kg) <span class="text-muted">(Optional)</span></label><input type="number" step="0.1" class="form-control" id="treatmentWeight" placeholder="Log weight with treatment" aria-describedby="weightHelp"><div id="weightHelp" class="form-text">This will also create a separate entry in the Weight Tracking section.</div></div>
-                </div>
-                <div class="mb-3"><label for="symptoms" class="form-label">Symptoms Observed</label><textarea class="form-control" id="symptoms" rows="2" placeholder="e.g., Limping, coughing, fever"></textarea></div>
-                <div class="row"><div class="col-md-6 mb-3"><label for="followUpDate" class="form-label">Follow-up Date (for specific re-checks)</label><input type="date" class="form-control" id="followUpDate"></div></div>
-                <div class="mb-3"><label for="treatmentNotes" class="form-label">Notes</label><textarea class="form-control" id="treatmentNotes" rows="2" aria-describedby="treatmentNotesHelp"></textarea><div id="treatmentNotesHelp" class="form-text">For Deworming/Vaccination, these notes (e.g., brand name) will appear on the Health Schedule.</div></div>
-                <button type="submit" class="btn btn-success">Save Entry</button><button type="button" class="btn btn-secondary" onclick="resetTreatmentForm()">Clear Form</button>
-            </form>
-                <h6>Treatment History</h6><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Symptoms</th><th>Medication</th><th>Dosage</th><th>Notes</th><th>Actions</th></tr></thead><tbody id="treatmentLogTbody"></tbody></table></div></div></div></div></div>
+            </div>
+        </div>
 
         <!-- Weight Entry Modal -->
-        <div class="modal fade" id="weightEntryModal" tabindex="-1"><div class="modal-dialog"><form class="modal-content needs-navigation" id="weightEntryForm"><div class="modal-header"><h5 class="modal-title" id="weightModalTitle">Add Weight Entry</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="weightRecordId"><input type="hidden" id="weightEntryId"><input type="hidden" id="weightEntrySource"><div class="mb-3"><label for="weightEntryDate" class="form-label">Date</label><input type="date" class="form-control" id="weightEntryDate" required></div><div class="mb-3"><label for="weightEntryValue" class="form-label">Weight (kg)</label><input type="number" step="0.1" class="form-control" id="weightEntryValue" required></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Weight</button></div></form></div></div>
+        <div class="modal fade" id="weightEntryModal" tabindex="-1">
+            <div class="modal-dialog">
+                <form class="modal-content needs-navigation" id="weightEntryForm">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="weightModalTitle">Add Weight Entry</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body"><input type="hidden" id="weightRecordId"><input type="hidden" id="weightEntryId"><input type="hidden" id="weightEntrySource">
+                        <div class="mb-3"><label for="weightEntryDate" class="form-label">Date</label><input type="date" class="form-control" id="weightEntryDate" required></div>
+                        <div class="mb-3"><label for="weightEntryValue" class="form-label">Weight (kg)</label><input type="number" step="0.1" class="form-control" id="weightEntryValue" required></div>
+                    </div>
+                    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save Weight</button></div>
+                </form>
+            </div>
+        </div>
 
         <!-- Batch Treatment Modal -->
-                <div class="modal fade" id="batchTreatmentModal" tabindex="-1">
+        <div class="modal fade" id="batchTreatmentModal" tabindex="-1">
             <div class="modal-dialog">
                 <form class="modal-content needs-navigation" id="batchTreatmentForm">
                     <div class="modal-header">
@@ -1259,12 +1348,13 @@
                         <div class="mb-3"><label for="batchDosage" class="form-label">Dosage</label><input type="text" class="form-control" id="batchDosage" placeholder="e.g., 5ml"></div>
                         <div class="mb-3"><label for="batchTreatmentNotes" class="form-label">Notes</label><textarea class="form-control" id="batchTreatmentNotes" rows="2"></textarea></div>
                     </div>
-                    <div class="modal-footer"><button type="submit" class="btn btn-success">Cancel </button></div><button type="submit" class="btn btn-success">Apply to All</button></div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">Apply to All</button>
+                    </div>
                 </form>
             </div>
         </div>
-
-
 
         <!-- Edit Sold Record Modal -->
         <div class="modal fade" id="editSoldSheepModal" tabindex="-1">
