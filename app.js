@@ -1713,6 +1713,12 @@ function renderWeightChartForSheep(recordId) {
     noDataMessage.style.display = 'none';
     displayArea.style.display = 'block';
 
+    const chartCanvas = document.getElementById('weightChart');
+    // Set the height of the chart's container to make the chart taller.
+    if (chartCanvas && chartCanvas.parentElement) {
+        chartCanvas.parentElement.style.height = '450px';
+    }
+
     const ctx = document.getElementById('weightChart').getContext('2d');
     if (weightChart) { weightChart.destroy(); }
 
