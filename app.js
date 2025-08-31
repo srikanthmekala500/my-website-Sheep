@@ -627,47 +627,6 @@ function fetchFeedInventory() {
     });
 }
 
-function updateExpenditureSummaryCard() {
-    const summaryValueEl = document.getElementById('expenditureSummaryValue');
-    const summaryTitleEl = document.getElementById('expenditureSummaryTitle');
-    const monthFilter = document.getElementById('feedMonthFilter');
-    const yearFilter = document.getElementById('feedYearFilter');
-    if (!summaryValueEl || !summaryTitleEl || !monthFilter || !yearFilter) return;
-
-    const today = new Date();
-    let summaryTotal = 0;
-    let title = "Expenditure";
-
-    const selectedMonth = monthFilter.value;
-    const selectedYear = yearFilter.value;
-
-    let month, year;
-    if (selectedMonth === 'all' && selectedYear === 'all') {
-        month = today.getMonth() + 1;
-        year = today.getFullYear();
-        title = `Expenditure (This Month)`;
-    } else {
-        month = selectedMonth === 'all' ? null : selectedMonth;
-        year = selectedYear === 'all' ? null : selectedYear;
-        const monthName = selectedMonth !== 'all' ? monthFilter.options[monthFilter.selectedIndex].text : '';
-        const yearName = selectedYear !== 'all' ? selectedYear : 'All Years';
-        title = `Expenditure (${monthName} ${yearName})`.trim().replace('  ', ' ');
-    }
-
-    const summaryPeriod = masterFeedInventory.filter(item => {
-        if (!item.purchaseDate) return false; // Always exclude items without a date
-        const itemDate = new Date(item.purchaseDate + 'T00:00:00'); // Add time to avoid timezone issues
-        const monthMatch = month === null || (itemDate.getMonth() + 1) == month;
-        const yearMatch = year === null || itemDate.getFullYear() == year;
-        return yearMatch && monthMatch;
-    });
-
-    summaryTotal = summaryPeriod.reduce((acc, item) => acc + (item.pricePerKg || 0) * (item.quantity || 1), 0);
-
-    summaryValueEl.textContent = formatCurrency(summaryTotal);
-    summaryTitleEl.textContent = title;
-}
-
 function populateExpenditureFilters() {
     const yearFilter = document.getElementById('feedYearFilter');
     const monthFilter = document.getElementById('feedMonthFilter');
@@ -754,7 +713,6 @@ function renderExpenditureLog() {
 
     totalValueEl.textContent = formatCurrency(totalValue);
     clearFiltersBtn.style.display = (selectedMonth !== 'all' || selectedYear !== 'all') ? 'inline-block' : 'none';
-    updateExpenditureSummaryCard();
 }
 
 // --- ROW RENDERING FUNCTIONS ---
@@ -849,40 +807,30 @@ function renderSoldRow(record) {
 
 
 function renderMonthlySalesSummary(monthlyTotals, sortBy = monthlySummarySort) {
-    // monthlySummarySort = sortBy; // This is now handled by the caller to avoid side-effects
-
     const container = document.getElementById('monthlySalesSummary');
     if (!container) {
         return; // Not an error if the element is not on the current page.
     }
 
-    // Update the active state on the sort buttons
     const sortButtons = document.querySelectorAll('#monthlySalesSort button');
     if (sortButtons.length > 0) {
-        sortButtons.forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.sort === sortBy);
-        });
+        sortButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.sort === sortBy));
     }
 
     if (Object.keys(monthlyTotals).length === 0) {
-        container.innerHTML = '<p class="text-muted text-center p-3 mb-0">No sales data available.</p>';
+        container.innerHTML = '<div class="card-body text-center"><p class="text-muted mb-0">No sales data available for this period.</p></div>';
         return;
     }
 
     let sortedMonths;
     const monthEntries = Object.entries(monthlyTotals);
 
-    switch (sortBy) {
-        case 'profit':
-            sortedMonths = monthEntries.sort(([, a], [, b]) => b.profit - a.profit).map(([key]) => key);
-            break;
-        case 'sales':
-            sortedMonths = monthEntries.sort(([, a], [, b]) => b.sales - a.sales).map(([key]) => key);
-            break;
-        case 'newest':
-        default:
-            sortedMonths = Object.keys(monthlyTotals).sort().reverse();
-            break;
+    if (sortBy === 'profit') {
+        sortedMonths = monthEntries.sort(([, a], [, b]) => b.profit - a.profit).map(([key]) => key);
+    } else if (sortBy === 'sales') {
+        sortedMonths = monthEntries.sort(([, a], [, b]) => b.sales - a.sales).map(([key]) => key);
+    } else { // 'newest'
+        sortedMonths = Object.keys(monthlyTotals).sort().reverse();
     }
 
     let listHtml = '<ul class="list-group list-group-flush">';
@@ -894,16 +842,24 @@ function renderMonthlySalesSummary(monthlyTotals, sortBy = monthlySummarySort) {
 
         const profitClass = profit >= 0 ? 'text-success' : 'text-danger';
         const profitSign = profit >= 0 ? '+' : '';
+        const profitMargin = sales > 0 ? (profit / sales) * 100 : 0;
+        const progressBarClass = profit >= 0 ? 'bg-success' : 'bg-danger';
 
         listHtml += `
-            <li class="list-group-item">
+            <li class="list-group-item px-3 py-3">
                 <div class="d-flex justify-content-between align-items-center">
-                    <span>${monthName} ${year}</span>
-                    <strong class="text-dark-emphasis">₹${sales.toFixed(2)}</strong>
+                    <h6 class="mb-1">${monthName} ${year}</h6>
+                    <strong class="text-dark-emphasis">${formatCurrency(sales)}</strong>
                 </div>
-                <div class="d-flex justify-content-between align-items-center small mt-1">
-                    <span class="text-muted">Profit/Loss</span>
-                    <strong class="${profitClass}">${profitSign}₹${profit.toFixed(2)}</strong>
+                <div class="d-flex w-100 justify-content-between align-items-center mt-2">
+                    <div class="small ${profitClass}">
+                        <i class="fas ${profit >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'} me-1"></i>
+                        <strong>${profitSign}${formatCurrency(profit)}</strong>
+                        <span class="ms-2 text-muted">(${profitMargin.toFixed(1)}%)</span>
+                    </div>
+                </div>
+                <div class="progress mt-2" style="height: 5px;">
+                    <div class="progress-bar ${progressBarClass}" role="progressbar" style="width: ${Math.abs(profitMargin)}%;" aria-valuenow="${profitMargin}" aria-valuemin="0" aria-valuemax="100"></div>
                 </div>
             </li>
         `;
