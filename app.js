@@ -1345,7 +1345,7 @@ function checkTreatmentFollowUps() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    allRecords.forEach(record => {
+    masterAllRecords.forEach(record => {
         if (record.treatments) {
             const treatmentsWithFollowUp = Object.values(record.treatments).filter(t => t.followUpDate);
             if (treatmentsWithFollowUp.length > 0) {
@@ -1394,7 +1394,7 @@ function checkPreventativeCareReminders() {
         return Math.ceil(timeDiff / (1000 * 3600 * 24));
     };
 
-    allRecords.forEach(record => {
+    masterAllRecords.forEach(record => {
         const dewormingDayDiff = getDayDiffFromLastDate(record.lastDewormingDate, 30);
         // Show reminders for anything due within the next 30 days or that is overdue
         if (dewormingDayDiff !== null && dewormingDayDiff <= 30) {
@@ -1978,7 +1978,7 @@ function updateFlockStatus() {
         corentin: corentin,
         pregnant: pregnant
     };
-    renderHealthStatusPieChart(healthChartData);
+    renderHealthStatusPieChart(healthChartData, total);
 
     // 2. Update Dashboard's Monthly Sales Summary
     const monthlyTotals = {};
@@ -2007,7 +2007,7 @@ function updateFlockStatus() {
  * Renders the health status pie chart on the main dashboard.
  * @param {object} healthData - An object with counts for each health status.
  */
-function renderHealthStatusPieChart(healthData) {
+function renderHealthStatusPieChart(healthData, totalFlockSize) {
     const ctx = document.getElementById('healthStatusPieChart')?.getContext('2d');
     const legendContainer = document.getElementById('pieChartLegend');
     if (!ctx || !legendContainer) return;
@@ -2035,23 +2035,43 @@ function renderHealthStatusPieChart(healthData) {
     if (ctx.canvas) ctx.canvas.style.display = 'block';
 
     healthStatusPieChartInstance = new Chart(ctx, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: filteredLabels,
             datasets: [{
                 data: filteredData,
                 backgroundColor: filteredColors,
-                borderWidth: 0 // Removes the white separator lines
+                borderColor: '#fff',
+                borderWidth: 2
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { display: false }, tooltip: { backgroundColor: '#333', titleFont: { size: 14 }, bodyFont: { size: 12 }, padding: 10, cornerRadius: 4, bodySpacing: 5 } }
+            cutout: '80%',
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#333',
+                    titleFont: { size: 14 },
+                    bodyFont: { size: 12 },
+                    padding: 10,
+                    cornerRadius: 4,
+                    bodySpacing: 5
+                },
+                doughnutCenterText: {
+                    text: totalFlockSize,
+                    subtext: 'Total Sheep',
+                    font: 'bold 2rem sans-serif',
+                    color: '#4e73df',
+                    subfont: '0.9rem sans-serif',
+                    subcolor: '#858796'
+                }
+            }
         }
     });
 
-    legendContainer.innerHTML = filteredLabels.map((label, index) => `<span class="me-3"><i class="fas fa-circle fa-xs" style="color: ${filteredColors[index]};"></i> ${label}</span>`).join('');
+    legendContainer.innerHTML = filteredLabels.map((label, index) => `<span class="me-3"><i class="fas fa-circle fa-xs" style="color: ${filteredColors[index]};"></i> ${label} (${filteredData[index]})</span>`).join('');
 }
 
 function calculateADG(record) {
