@@ -256,54 +256,63 @@
         /* =================================================================
          * BLOG STYLES (Card-based Grid)
          * ================================================================= */
-        .blog-card {
+        #blogSection .card {
             display: flex;
             flex-direction: column;
             height: 100%;
-            border: 1px solid var(--border-color);
             border-radius: 0.5rem;
-            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            transition: transform 0.25s ease-out, box-shadow 0.25s ease-out;
             background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
         }
 
-        .blog-card:hover {
+        #blogSection .card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.1);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
         }
 
-        .blog-card-img-container {
+        #blogSection .card-img-top-container {
             width: 100%;
             height: 200px;
             overflow: hidden;
             background-color: #f8f9fa;
-            border-bottom: 1px solid var(--border-color);
         }
 
-        .blog-card-img {
+        #blogSection .card-img-top {
             width: 100%;
             height: 100%;
             object-fit: cover;
             transition: transform 0.3s ease;
         }
 
-        .blog-card:hover .blog-card-img {
+        #blogSection .card:hover .card-img-top {
             transform: scale(1.05);
         }
 
-        .blog-card-body {
-            display: flex;
-            flex-direction: column;
-            flex-grow: 1; /* Allows the body to fill remaining space */
+        #blogSection .card-body {
+            flex-grow: 1;
         }
 
-        .blog-card-title {
+        #blogSection .card-title {
             font-size: 1.25rem;
             font-weight: 600;
             color: #343a40;
         }
 
-        .blog-card-excerpt {
+        #blogSection .card-text.excerpt {
             flex-grow: 1; /* Pushes the footer down */
+            color: var(--color-text-muted);
+            line-height: 1.5;
+        }
+
+        #blogSection .tag-badge {
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        #blogSection .tag-badge:hover {
+            background-color: var(--color-primary) !important;
+            color: white !important;
         }
     </style>
 </head>
@@ -1524,14 +1533,30 @@
                 <h1 class="h2">Farm Blog & Updates</h1>
                 <button class="btn btn-sm btn-outline-primary" id="addBlogPostBtn"><i class="fas fa-plus me-2"></i>New Post</button>
             </div>
-            <!-- Container for category filter buttons -->
-            <div id="blogCategoryFilters" class="mb-4">
-                <!-- Filters will be rendered here by blog.js -->
+            <div class="row mb-4 align-items-center">
+                <div class="col-lg-8">
+                    <!-- Container for category filter buttons -->
+                    <div id="blogCategoryFilters">
+                        <!-- Filters will be rendered here by blog.js -->
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="input-group">
+                        <span class="input-group-text" id="blog-search-icon"><i class="fas fa-search"></i></span>
+                        <input type="text" class="form-control" id="blogSearchInput" placeholder="Search posts by title, tag, or content..." aria-label="Search posts" aria-describedby="blog-search-icon">
+                    </div>
+                </div>
             </div>
             <div id="blogPostsContainer" class="row g-4">
                 <!-- Blog posts will be rendered here by app.js -->
                 <p class="text-muted">Loading blog posts...</p>
             </div>
+            <!-- Pagination Controls -->
+            <nav aria-label="Blog page navigation" class="mt-4">
+                <ul id="blogPagination" class="pagination justify-content-center">
+                    <!-- Pagination items will be rendered here by blog.js -->
+                </ul>
+            </nav>
         </div>
 
         <!-- =================================================================
@@ -1957,6 +1982,11 @@
                             <option value="Medicine">Medicine</option>
                             <option value="Disease & Symptoms">Disease & Symptoms</option>
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="blogPostTags" class="form-label">Tags</label>
+                        <input type="text" class="form-control" id="blogPostTags" placeholder="e.g., lambing, health, 2024">
+                        <div class="form-text">Enter comma-separated tags.</div>
                     </div>
                     <div class="mb-3">
                         <label for="blogPostContent" class="form-label">Content</label>

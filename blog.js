@@ -36,6 +36,8 @@ export function initializeBlog(app, storageInstance, blogModalInstance, viewModa
 
     // Add event listeners specific to the blog
     document.getElementById('blogPostForm').addEventListener('submit', handleSaveBlogPost);
+    const searchInput = document.getElementById('blogSearchInput');
+    if (searchInput) searchInput.addEventListener('keyup', () => renderBlogSection(masterBlogPosts, 'all'));
 }
 
 /**
@@ -65,13 +67,21 @@ function getCategoryBadgeClass(category) {
  * Renders the blog section with all posts.
  */
 export function renderBlogSection(posts = [], activeCategory = 'all') {
+    // This function is now also triggered by search, so we need to get the current search term
     const container = document.getElementById('blogPostsContainer');
     const filterContainer = document.getElementById('blogCategoryFilters');
-    if (!container || !filterContainer) return;
+    const searchInput = document.getElementById('blogSearchInput');
+    if (!container || !filterContainer || !searchInput) return;
+
+    const searchTerm = searchInput.value.toLowerCase();
 
     // --- 1. Render Category Filters ---
     const categories = ['all', ...new Set(posts.map(p => p.category).filter(Boolean))];
-    const filterHtml = categories.map(category => {
+    // Create a combined list of categories and all unique tags
+    const allTags = [...new Set(posts.flatMap(p => p.tags || []))];
+    const filterItems = [...new Set([...categories, ...allTags])];
+
+    const filterHtml = filterItems.map(category => {
         const isActive = category === activeCategory;
         return `
             <button 
@@ -81,14 +91,26 @@ export function renderBlogSection(posts = [], activeCategory = 'all') {
             </button>
         `;
     }).join('');
-    filterContainer.innerHTML = filterHtml;
+    filterContainer.innerHTML = `<span class="me-2 small text-muted">Filter by:</span>` + filterHtml;
 
 
     // --- 2. Filter and Render Posts ---
     let postsToRender = [...posts];
 
+    // Apply category/tag filter
     if (activeCategory !== 'all') {
-        postsToRender = postsToRender.filter(post => post.category === activeCategory);
+        postsToRender = postsToRender.filter(post => post.category === activeCategory || (post.tags && post.tags.includes(activeCategory)));
+    }
+
+    // Apply search term filter
+    if (searchTerm) {
+        postsToRender = postsToRender.filter(post => {
+            const titleMatch = post.title.toLowerCase().includes(searchTerm);
+            const contentMatch = post.content.toLowerCase().includes(searchTerm);
+            const tagMatch = post.tags ? post.tags.some(tag => tag.toLowerCase().includes(searchTerm)) : false;
+            const categoryMatch = post.category ? post.category.toLowerCase().includes(searchTerm) : false;
+            return titleMatch || contentMatch || tagMatch || categoryMatch;
+        });
     }
 
     if (postsToRender.length === 0) {
@@ -106,20 +128,27 @@ export function renderBlogSection(posts = [], activeCategory = 'all') {
         const snippet = createExcerpt(post.content);
         const categoryBadgeClass = getCategoryBadgeClass(post.category);
         const coverImageHtml = extractFirstImage(post.content)
-            ? `<div class="blog-card-img-container"><img src="${escapeHTML(extractFirstImage(post.content))}" class="blog-card-img" alt="${escapeHTML(post.title)}"></div>`
+            ? `<div class="card-img-top-container"><img src="${escapeHTML(extractFirstImage(post.content))}" class="card-img-top" alt="${escapeHTML(post.title)}"></div>`
             : '';
+        
+        const tagsHtml = (post.tags && post.tags.length > 0)
+            ? `<div class="mt-auto pt-3">
+                 ${post.tags.map(tag => `<span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill me-1 mb-1 tag-badge blog-category-filter" data-category="${escapeHTML(tag)}">${escapeHTML(tag)}</span>`).join('')}
+               </div>`
+            : '<div class="mt-auto"></div>'; // Placeholder to maintain layout
 
         return `
             <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100 shadow-sm blog-card">
+                <div class="card h-100 shadow-sm">
                     ${coverImageHtml}
                     <div class="card-body d-flex flex-column">
                         <span class="badge ${categoryBadgeClass} mb-2 align-self-start">${escapeHTML(post.category || 'General')}</span>
-                        <h5 class="card-title blog-card-title">${escapeHTML(post.title)}</h5>
+                        <h5 class="card-title">${escapeHTML(post.title)}</h5>
                         <p class="card-text small text-muted">By ${escapeHTML(post.author || 'Admin')} on ${formatDate(post.date)}</p>
-                        <p class="card-text blog-card-excerpt">${escapeHTML(snippet)}</p>
+                        <p class="card-text excerpt">${escapeHTML(snippet)}</p>
+                        ${tagsHtml}
                     </div>
-                    <div class="card-footer bg-transparent border-top-0 pt-0">
+                    <div class="card-footer bg-transparent">
                          <div class="d-flex justify-content-between align-items-center">
                             <button class="btn btn-primary btn-sm js-view-blog-post" data-post-id="${post.id}">Read More</button>
                             <div class="btn-group">
@@ -220,6 +249,7 @@ export function openBlogPostModal(postId = null) {
         if (post) {
             document.getElementById('blogPostTitle').value = post.title;
             document.getElementById('blogPostCategory').value = post.category || '';
+            document.getElementById('blogPostTags').value = post.tags ? post.tags.join(', ') : '';
             quillEditor.root.innerHTML = post.content; // Set content in Quill editor
         }
     } else {
@@ -232,9 +262,13 @@ export function openBlogPostModal(postId = null) {
 function handleSaveBlogPost(e) {
     e.preventDefault();
     const postId = document.getElementById('blogPostId').value;
+    const tagsInput = document.getElementById('blogPostTags').value;
+    // Convert comma-separated string into an array of trimmed, non-empty tags
+    const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim()).filter(Boolean) : [];
     const postData = {
         title: document.getElementById('blogPostTitle').value,
         category: document.getElementById('blogPostCategory').value,
+        tags: tags,
         content: quillEditor.root.innerHTML, // Get HTML content from Quill
         author: auth.currentUser?.displayName || 'Admin',
         date: new Date().toISOString().split('T')[0]
@@ -266,12 +300,16 @@ export function viewBlogPost(postId) {
     }
 
     const categoryBadgeClass = getCategoryBadgeClass(post.category);
+    const tagsHtml = (post.tags && post.tags.length > 0)
+        ? post.tags.map(tag => `<span class="badge bg-secondary-subtle text-secondary-emphasis rounded-pill me-2 tag-badge blog-category-filter" data-category="${escapeHTML(tag)}">${escapeHTML(tag)}</span>`).join('')
+        : '';
     
     modalTitle.textContent = post.title;
     postMeta.innerHTML = `
         <span class="badge ${categoryBadgeClass} me-2">${escapeHTML(post.category || 'General')}</span> 
         <span class="text-muted">By</span> <strong>${escapeHTML(post.author)}</strong> 
         <span class="text-muted">on</span> <strong>${formatDate(post.date)}</strong>
+        ${tagsHtml ? `<div class="mt-2 border-top pt-2">${tagsHtml}</div>` : ''}
     `;
 
     // Handle cover image
