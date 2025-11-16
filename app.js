@@ -1,7 +1,7 @@
 let healthStatusPieChartInstance = null;
 
 // Custom Chart.js plugin to display text in the center of a doughnut chart.
-const doughnutCenterText = {
+const doughnutCenterText = { // NOSONAR
     id: 'doughnutCenterText',
     afterDraw(chart, args, options) {
         if (!options.text) {
@@ -33,7 +33,10 @@ const doughnutCenterText = {
 Chart.register(doughnutCenterText); // Register the plugin globally once.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+import { initializeBlog, renderBlogSection, openBlogPostModal, viewBlogPost, deleteBlogPost, setBlogPosts } from './blog.js';
+import { formatDate, escapeHTML, showToast } from './utils.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-storage.js";
 import { getDatabase, ref, onValue, off, push, update, remove, child, query } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
 
 console.log("app.js loaded successfully."); // Diagnostic log to confirm file version
@@ -56,23 +59,26 @@ const firebaseConfig = { apiKey: "AIzaSyBdiEUorFPkiZAya84Xzx17id82nB77Zg4", auth
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
+const storage = getStorage(app);
 
 // --- STATE VARIABLES ---
 let masterAllRecords = [];
 let masterSoldRecords = [];
 let masterArchivedRecords = [];
-let masterFeedInventory = [];
+let masterFeedInventory = []; // NOSONAR
+let masterBlogPosts = [];
+let masterFeedConsumptionLog = [];
 let allRecords = [];
 let appSettings = {
-    dewormingInterval: 30,  // Default value
+    dewormingInterval: 45,  // Default value
     vaccinationInterval: 365, // Default value
     reminderWindow: 30, // Default value
     dewormingReminderWindow: 5 // Default value
 };
 
 let soldRecords = [];
-let archivedRecords = [];
-let editSheepModal, saleSheepModal, treatmentLogModal, weightEntryModal, batchTreatmentModal, editSoldSheepModal, editScheduleModal;
+let archivedRecords = []; let addSheepModal;
+let editSheepModal, saleSheepModal, treatmentLogModal, weightEntryModal, batchTreatmentModal, editSoldSheepModal, editScheduleModal, blogPostModal, viewPostModal;
 let state = { // NOSONAR
     growthAnalyticsData: [], // Stores the raw calculated growth data for filtering/sorting
     currentGrowthFilters: { gender: 'all', breed: 'all', searchTerm: '' }
@@ -92,11 +98,13 @@ let currentScheduleFilter = 'all';
 let currentSoldFilter = 'all';
 let growthAnalyticsSort = { column: 'adg', direction: 'desc' };
 let monthlySummarySort = 'newest'; // To store the current sort order for the monthly summary
+let currentBlogCategory = 'all'; // State for blog category filter
 let treatmentLogListener = null; // To manage the live listener for the treatment modal
 
 let renderDebounceTimer = null;
 // --- DOM ELEMENT SELECTORS ---
 const mainApp = document.getElementById('mainApp');
+const LOW_STOCK_THRESHOLD = 10; // in kg
 const authSection = document.getElementById('authSection');
 
 // --- CORE APPLICATION LOGIC ---
@@ -148,44 +156,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
 });
 
-/**
- * Formats a date string (YYYY-MM-DD) into DD/MM/YY.
- * @param {string} dateString - The date string to format.
- * @returns {string} The formatted date or the original string if invalid.
- */
-function formatDate(dateString) {
-    if (!dateString) return '';
-    try {
-        const date = new Date(dateString.split('T')[0] + 'T00:00:00');
-        if (isNaN(date.getTime())) return dateString;
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = String(date.getFullYear()).slice(-2);
-        return `${day}/${month}/${year}`;
-    } catch (e) {
-        return dateString;
-    }
-}
-
-/**
- * Formats a number as Indian Rupees (INR).
- * @param {number} value - The numeric value to format.
- * @returns {string} The formatted currency string.
- */
 function formatCurrency(value) {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(value || 0);
-}
-
-/**
- * Escapes HTML special characters in a string to prevent XSS.
- * @param {string} str - The string to escape.
- * @returns {string} The escaped string.
- */
-function escapeHTML(str) {
-    if (str === null || str === undefined) return '';
-    const p = document.createElement("p");
-    p.textContent = str;
-    return p.innerHTML;
 }
 /**
  * Safely updates the content of a DOM element.
@@ -201,48 +173,6 @@ function updateElement(id, content, isHtml = false) {
     } else {
         console.error(`UI Error: HTML element with ID '${id}' was not found in the document. Cannot update its content.`);
     }
-}
-
-/**
- * Shows a toast notification. Creates the container if it doesn't exist.
- * @param {string} title - The title of the toast.
- * @param {string} message - The body message of the toast.
- * @param {string} [type='success'] - The type of toast ('success', 'danger', 'info', 'warning').
- */
-function showToast(title, message, type = 'success') {
-    let toastContainer = document.getElementById('toast-container');
-    if (!toastContainer) {
-        toastContainer = document.createElement('div');
-        toastContainer.id = 'toast-container';
-        toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
-        toastContainer.style.zIndex = '1100';
-        document.body.appendChild(toastContainer);
-    }
-
-    const toastId = 'toast-' + Date.now();
-    let iconClass = 'fa-info-circle text-info';
-    switch (type) {
-        case 'success': iconClass = 'fa-check-circle text-success'; break;
-        case 'danger': iconClass = 'fa-exclamation-triangle text-danger'; break;
-        case 'warning': iconClass = 'fa-exclamation-circle text-warning'; break;
-    }
-
-    const toastHtml = `
-        <div id="${toastId}" class="toast" role="alert" aria-live="assertive" aria-atomic="true" style="min-width: 500px;">
-            <div class="toast-header">
-                <i class="fas ${iconClass} fa-lg me-2"></i>
-                <strong class="me-auto">${title}</strong>
-                <small>Just now</small>
-                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-            </div>
-            <div class="toast-body" style="font-size: 1.05rem;">${message}</div>
-        </div>
-    `;
-    toastContainer.insertAdjacentHTML('beforeend', toastHtml);
-    const toastElement = document.getElementById(toastId);
-    const toast = new bootstrap.Toast(toastElement, { delay: 5000 });
-    toast.show();
-    toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
 }
 
 /**
@@ -336,12 +266,13 @@ function handleLogin(e) {
  * Shows a specific content section and hides others.
  * @param {string} sectionName - The name of the section to show.
  */
-function showSection(sectionName) {
-    ['home', 'records', 'corentin', 'overdue', 'treatment', 'pregnant', 'saled', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth', 'feed', 'financials', 'settings'].forEach(id => {
+function showSection(sectionName) { // NOSONAR
+    ['home', 'records', 'corentin', 'overdue', 'treatment', 'pregnant', 'saled', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth', 'feed', 'feedConsumption', 'financials', 'settings', 'blog'].forEach(id => {
         document.getElementById(id + 'Section').classList.add('hidden');
     });
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
 
+    document.getElementById(sectionName + 'Section').classList.remove('hidden');
     document.getElementById(sectionName + 'Section').classList.remove('hidden');
     document.querySelector(`.nav-link[data-section="${sectionName}"]`).classList.add('active');
 
@@ -362,11 +293,17 @@ function showSection(sectionName) {
     if (sectionName === 'feed') {
         initializeFeedSection();
     }
+    if (sectionName === 'feedConsumption') {
+        renderFeedConsumptionSection();
+    }
     if (sectionName === 'settings') {
         document.getElementById('settingDewormingInterval').value = appSettings.dewormingInterval;
         document.getElementById('settingVaccinationInterval').value = appSettings.vaccinationInterval;
         document.getElementById('settingDewormingReminderWindow').value = appSettings.dewormingReminderWindow;
         document.getElementById('settingReminderWindow').value = appSettings.reminderWindow;
+    }
+    if (sectionName === 'blog') {
+        renderBlogSection(masterBlogPosts, currentBlogCategory);
     }
     const sidebar = document.querySelector('.dashboard-sidebar');
     const overlay = document.getElementById('sidebar-overlay');
@@ -427,7 +364,7 @@ function applyFiltersAndRender() {
         const recordDate = new Date(record.dateRecorded + 'T00:00:00');
         if (isNaN(recordDate.getTime())) return false;
         if (yearFilter !== 'all' && recordDate.getFullYear().toString() !== yearFilter) return false;
-        if (monthFilter !== 'all' && recordDate.getMonth().toString() !== monthFilter) return false;
+        if (monthFilter !== 'all' && recordDate.getMonth().toString() !== monthFilter) return false; // Correct: getMonth() is 0-11, which matches the filter value.
         return true;
     });
 
@@ -438,7 +375,7 @@ function applyFiltersAndRender() {
         const recordDate = new Date(record.saleDate + 'T00:00:00');
         if (isNaN(recordDate.getTime())) return false;
         if (yearFilter !== 'all' && recordDate.getFullYear().toString() !== yearFilter) return false;
-        if (monthFilter !== 'all' && recordDate.getMonth().toString() !== monthFilter) return false;
+        if (monthFilter !== 'all' && recordDate.getMonth().toString() !== monthFilter) return false; // Correct: getMonth() is 0-11
         return true;
     });
 
@@ -449,7 +386,7 @@ function applyFiltersAndRender() {
         const recordDate = new Date(record.archiveDate + 'T00:00:00');
         if (isNaN(recordDate.getTime())) return false;
         if (yearFilter !== 'all' && recordDate.getFullYear().toString() !== yearFilter) return false;
-        if (monthFilter !== 'all' && recordDate.getMonth().toString() !== monthFilter) return false;
+        if (monthFilter !== 'all' && recordDate.getMonth().toString() !== monthFilter) return false; // Correct: getMonth() is 0-11
         return true;
     });
 
@@ -462,6 +399,7 @@ function applyFiltersAndRender() {
     updateProfileView();
     updateWeightTrackingView();
     updateScheduleView();
+    renderDashboardOverdueList();
     updateFinancialsDashboard();
     updateWeeklyTrackingView();
     renderExpenditureLog();
@@ -571,7 +509,7 @@ function fetchAllRecords() {
 function renderSoldView() {
     const monthlyTotals = {};
     const yearlyTotals = {};
-
+    
     masterSoldRecords.forEach(record => { // Changed from soldRecords to masterSoldRecords
         try {
             if (record.saleDate && record.salePrice != null) {
@@ -598,7 +536,7 @@ function renderSoldView() {
     renderMonthlySalesSummary(monthlyTotals);
     renderYearlySalesSummary(yearlyTotals);
     renderProfitLossChart(monthlyTotals);
-    updateSoldRecordsView(); // This will render the table with the filtered data
+    updateSoldRecordsView(); // This will render the table with the currently filtered data
 }
 
 function fetchSoldRecords() {
@@ -666,6 +604,40 @@ function fetchFeedInventory() {
     });
 }
 
+function fetchBlogPosts() {
+    const postsRef = ref(db, "blogPosts");
+    onValue(postsRef, (snapshot) => {
+        masterBlogPosts = [];
+        if (snapshot.exists()) {
+            snapshot.forEach(child => {
+                masterBlogPosts.push({ id: child.key, ...child.val() });
+            });
+            setBlogPosts(masterBlogPosts); // Pass the posts to the blog module
+        }
+        // If the blog section is currently visible, re-render it with the new data.
+        if (document.getElementById('blogSection') && !document.getElementById('blogSection').classList.contains('hidden')) {
+            renderBlogSection(masterBlogPosts, currentBlogCategory);
+        }
+    }, (error) => console.error("Error fetching blog posts:", error));
+}
+
+function fetchFeedConsumptionLog() {
+    const logRef = ref(db, "feedConsumptionLog");
+    onValue(logRef, snapshot => {
+        masterFeedConsumptionLog = [];
+        if (snapshot.exists()) {
+            snapshot.forEach(child => {
+                masterFeedConsumptionLog.push({ id: child.key, ...child.val() });
+            });
+        }
+        scheduleRender(); // Re-render views that might depend on this
+        updateTimestamp();
+    }, error => {
+        console.error("Error fetching feed consumption log:", error);
+        updateElement('feedConsumptionLogBody', `<tr><td colspan="5" class="text-center text-danger p-4">Error loading consumption log.</td></tr>`, true);
+    });
+}
+
 function fetchSettings() {
     const user = auth.currentUser;
     if (!user) return; // Don't fetch if no user is logged in
@@ -725,7 +697,7 @@ function renderExpenditureLog() {
     const monthFilter = document.getElementById('feedMonthFilter');
     const yearFilter = document.getElementById('feedYearFilter');
     const clearFiltersBtn = document.getElementById('clearFeedFiltersBtn');
-    if (!tableBody || !totalValueEl || !monthFilter || !yearFilter || !clearFiltersBtn) return;
+    if (!tableBody || !totalValueEl || !monthFilter || !yearFilter || !clearFiltersBtn) return; // Safety check
 
     const selectedMonth = monthFilter.value;
     const selectedYear = yearFilter.value;
@@ -742,22 +714,35 @@ function renderExpenditureLog() {
     filteredInventory.sort((a, b) => new Date(b.purchaseDate) - new Date(a.purchaseDate));
 
     let totalValue = 0;
+    let lowStockCount = 0;
     if (filteredInventory.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="7" class="text-center p-4">No expenditure records found for the selected period.</td></tr>`;
     } else {
         const rowsHtml = filteredInventory.map(item => {
-            const itemQuantity = item.quantity || 1;
-            const itemPrice = item.pricePerKg || 0; // Sticking with old property name
-            const itemTotal = itemPrice * itemQuantity;
+            // If quantity is null or 0, it's a direct cost. The price is the total.
+            // Otherwise, it's price * quantity.
+            const hasQuantity = item.quantity && parseFloat(item.quantity) > 0;
+            const itemQuantity = hasQuantity ? parseFloat(item.quantity) : 1; // Use 1 for calculation if no quantity
+            const itemPrice = parseFloat(item.pricePerKg) || 0;
+            const itemTotal = hasQuantity ? itemPrice * itemQuantity : itemPrice;
             totalValue += itemTotal;
+            
+            let rowClass = '';
+            let stockWarningHtml = '';
+            if (item.category === 'Feed' && hasQuantity && itemQuantity < LOW_STOCK_THRESHOLD) {
+                rowClass = 'table-warning-light';
+                stockWarningHtml = `<span class="badge bg-warning text-dark ms-2" title="Stock is below ${LOW_STOCK_THRESHOLD} kg"><i class="fas fa-exclamation-triangle me-1"></i>Low Stock</span>`;
+                lowStockCount++;
+            }
 
             return `
-                <tr data-id="${item.id}">
-                    <td>${escapeHTML(item.name)}</td>
+                <tr data-id="${item.id}" class="${rowClass}">
+                    <td>${escapeHTML(item.name)}
+                    ${stockWarningHtml}</td>
                     <td class="text-center">${formatDate(item.purchaseDate)}</td>
-                    <td><span class="badge bg-secondary">${escapeHTML(item.category || 'N/A')}</span></td>
-                    <td class="text-end">${formatCurrency(itemPrice)}</td>
-                    <td class="text-end">${itemQuantity}</td>
+                    <td class="hide-mobile"><span class="badge bg-secondary">${escapeHTML(item.category || 'N/A')}</span></td>
+                    <td class="text-end">${hasQuantity ? formatCurrency(itemPrice) : '-'}</td>
+                    <td class="text-end">${itemQuantity || '-'}</td>
                     <td class="text-end fw-bold">${formatCurrency(itemTotal)}</td>
                     <td class="text-center">
                         <button class="btn btn-sm btn-outline-primary js-edit-feed-item" data-feed-id="${item.id}" title="Edit"><i class="fas fa-edit"></i></button>
@@ -770,6 +755,15 @@ function renderExpenditureLog() {
     }
 
     totalValueEl.textContent = formatCurrency(totalValue);
+    const lowStockCard = document.getElementById('lowStockWarningCard');
+    if (lowStockCard) {
+        if (lowStockCount > 0) {
+            document.getElementById('lowStockCount').textContent = lowStockCount;
+            lowStockCard.style.display = 'block';
+        } else {
+            lowStockCard.style.display = 'none';
+        }
+    }
     clearFiltersBtn.style.display = (selectedMonth !== 'all' || selectedYear !== 'all') ? 'inline-block' : 'none';
 }
 
@@ -1099,10 +1093,9 @@ function updateSoldRecordsView(filter = currentSoldFilter) {
     const localYearFilter = document.getElementById('soldYearFilter')?.value || 'all';
 
     const filteredRecords = recordsToProcess.filter(record => {
-        // Ensure record.saleDate exists and is valid
         if (!record.saleDate) return false;
-        const saleDate = new Date(record.saleDate + 'T00:00:00'); // Ensure date is parsed correctly
-        if (isNaN(saleDate.getTime())) return false; // Skip records with invalid sale dates
+        const saleDate = new Date(record.saleDate + 'T00:00:00');
+        if (isNaN(saleDate.getTime())) return false;
 
         // Apply local month and year filters from the sold records card
         const monthMatch = (localMonthFilter === 'all') || ((saleDate.getMonth() + 1).toString() === localMonthFilter);
@@ -1336,39 +1329,40 @@ function renderScheduleRow(record) {
     const dewormingStatus = getScheduleStatus(record.lastDewormingDate, appSettings.dewormingInterval, null, 'Deworming');
     const vaccinationStatus = getScheduleStatus(record.lastVaccinationDate, appSettings.vaccinationInterval, record.manualVaccinationDueDate, 'Vaccination');
 
-    const rowClass = (dewormingStatus.isOverdue || vaccinationStatus.isOverdue) ? 'table-danger-light' : '';
+    // Determine overall row highlight for any overdue item
+    const rowClass = (dewormingStatus.isOverdue || vaccinationStatus.isOverdue) ? 'table-danger-light' : ((dewormingStatus.isUpcoming || vaccinationStatus.isUpcoming) ? 'table-warning-light' : '');
+
     const renderCareCell = (status, notes, lastDate, icon, title) => {
-         const notesHtml = notes
-             ? `<div class="small text-muted mt-2 fst-italic"><i class="fas fa-comment-dots me-1 text-info"></i>${escapeHTML(notes)}</div>`
-             : '';
- 
-         let statusClass = '';
-         if (status.isOverdue) statusClass = 'border-danger bg-danger-light';
-         else if (status.isUpcoming) statusClass = 'border-warning bg-warning-light';
- 
-         return `
-             <td class="align-middle">
-                 <div class="p-2 rounded border ${statusClass}">
-                     <div class="d-flex justify-content-between align-items-center">
-                         <h6 class="mb-0 text-dark-emphasis"><i class="fas ${icon} fa-fw me-2"></i>${title}</h6>
-                         ${renderScheduleStatusBadge(status)}
-                     </div>
-                     <hr class="my-2">
-                     <div class="d-flex justify-content-between small">
-                         <div>
-                             <div class="text-muted text-uppercase" style="font-size: .65rem;">Due Date</div>
-                             <div class="fw-bold">${status.dueDate ? formatDate(status.dueDate.toISOString().split('T')[0]) : 'N/A'}</div>
-                         </div>
-                         <div class="text-end">
-                             <div class="text-muted text-uppercase" style="font-size: .65rem;">Last Given</div>
-                             <div class="fw-bold">${lastDate ? formatDate(lastDate) : 'N/A'}</div>
-                         </div>
-                     </div>
-                     ${notesHtml}
-                 </div>
-             </td>
-         `;
-     };
+        const medicationName = (notes || '').trim();
+        const medicationHtml = medicationName
+            ? `<div class="mt-2"><span class="badge bg-primary-subtle text-primary-emphasis rounded-pill">${escapeHTML(medicationName)}</span></div>`
+            : '';
+
+        let cardClass = 'schedule-care-card';
+        if (status.isOverdue) cardClass += ' is-overdue';
+        else if (status.isUpcoming) cardClass += ' is-upcoming';
+
+        return `
+            <td class="align-middle">
+                <div class="${cardClass}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h6 class="care-title mb-0"><i class="fas ${icon} fa-fw me-2"></i>${title}</h6>
+                        ${renderScheduleStatusBadge(status)}
+                    </div>
+                    ${medicationHtml}
+                    <div class="row mt-2 gx-2">
+                        <div class="col-6">
+                            <div class="care-label">Due Date</div>
+                            <div class="care-value">${status.dueDate ? formatDate(status.dueDate.toISOString().split('T')[0]) : 'N/A'}</div>
+                        </div>
+                        <div class="col-6 text-end">
+                            <div class="care-label">Last Given</div>
+                            <div class="care-value">${lastDate ? formatDate(lastDate) : 'N/A'}</div>
+                        </div>
+                    </div>
+                </div>
+            </td>`;
+    };
 
     return `
         <tr class="${rowClass}" data-sheep-id="${record.id}">
@@ -2028,7 +2022,7 @@ function updateFlockStatus() {
     updateElement('treatmentCount', treatment);
     updateElement('pregnantCount', pregnant);
     updateElement('maleCount', maleCount);
-    updateElement('femaleCount', femaleCount);
+    updateElement('femaleCount', femaleCount); 
     updateElement('flockValue', `₹${totalValue.toFixed(2)}`);
 
     // --- Pie Chart & Dashboard Summary Updates ---
@@ -2068,6 +2062,41 @@ function updateFlockStatus() {
     renderMonthlySalesSummary(monthlyTotals, 'newest');
 }
 
+/**
+ * Renders a summarized list of overdue follow-ups for the main dashboard.
+ */
+function renderDashboardOverdueList() {
+    const listContainer = document.getElementById('dashboardOverdueList');
+    if (!listContainer) return;
+
+    const overdueRecords = allRecords.filter(record => {
+        const status = record.healthStatus;
+        return (status === 'Corentin' || status === 'Under Treatment') && getFollowUpStatus(record) === 'overdue';
+    });
+
+    if (overdueRecords.length === 0) {
+        listContainer.innerHTML = '<div class="list-group-item text-center text-muted p-3">No overdue follow-ups. Great job!</div>';
+        return;
+    }
+
+    // Sort by follow-up date (most overdue first) and limit to 5 for the dashboard
+    overdueRecords.sort((a, b) => new Date(a.computedFollowUpDate) - new Date(b.computedFollowUpDate));
+    const recordsToDisplay = overdueRecords.slice(0, 5);
+
+    const listHtml = recordsToDisplay.map(record => {
+        const followUpDate = record.treatments ? Object.values(record.treatments).find(t => t.followUpDate)?.followUpDate : null;
+        return `
+            <a href="#" class="list-group-item list-group-item-action js-manage-treatment" data-record-id="${record.id}" data-sheep-id="${record.sheepId}">
+                <div class="d-flex w-100 justify-content-between">
+                    <h6 class="mb-1">${record.sheepId}</h6>
+                    <small class="text-danger">${followUpDate ? formatDate(followUpDate) : ''}</small>
+                </div>
+                <small class="text-muted">${record.healthStatus}</small>
+            </a>
+        `;
+    }).join('');
+    listContainer.innerHTML = listHtml;
+}
 /**
  * Renders the health status pie chart on the main dashboard.
  * @param {object} healthData - An object with counts for each health status.
@@ -2348,6 +2377,11 @@ function updateFinancialsDashboard() {
     // --- Centralized Monthly Data Calculation ---
     const monthlyData = {};
 
+    // Get global filters to apply to cost calculations
+    const yearFilter = document.getElementById('globalYearFilter')?.value || 'all';
+    const monthFilter = document.getElementById('globalMonthFilter')?.value || 'all';
+
+
     // 1. Aggregate revenue and COGS from sold records
     soldRecords.forEach(record => {
         if (!record.saleDate) return;
@@ -2358,103 +2392,71 @@ function updateFinancialsDashboard() {
         const salePrice = parseFloat(record.salePrice) || 0;
         const buyingPrice = parseFloat(record.buyingPrice) || 0;
         const treatmentCosts = (record.treatments && typeof record.treatments === 'object')
-            ? Object.values(record.treatments).reduce((sum, t) => sum + (parseFloat(t.cost) || 0), 0)
+            // Include all logged costs (medical, feed, etc.) in COGS.
+            ? Object.values(record.treatments).reduce((sum, t) => {
+                // The cost is now automatically calculated for feed, so we just sum it up.
+                return sum + (parseFloat(t.cost) || 0);
+            }, 0)
             : 0;
         
         monthlyData[month].revenue += salePrice;
         monthlyData[month].cogs += (buyingPrice + treatmentCosts);
     });
 
-    // 2. Aggregate operating expenses (feed and direct costs)
-    const yearFilter = document.getElementById('globalYearFilter').value;
-    const monthFilter = document.getElementById('globalMonthFilter').value;
+    // 2. Aggregate "Feed & Other Costs" (Operating Expenses).
+    // This is the single source of truth for the "Feed & Other Costs" column in the monthly summary.
+    // It sums the "Total Value" of all items from the "Feed Inventory & Cost Management" log.
+    let totalGrossExpenditureForPeriod = 0; // This will hold the filtered total for the top card.
+    const expenseBreakdown = {}; // For the pie chart
 
     masterFeedInventory.forEach(item => {
-        if (item.purchaseDate) {
+        if (item.purchaseDate && item.category) {
             const itemDate = new Date(item.purchaseDate + 'T00:00:00');
             if (isNaN(itemDate.getTime())) return;
-
-            const yearMatch = (yearFilter === 'all') || (itemDate.getFullYear().toString() === yearFilter);
-            const monthMatch = (monthFilter === 'all') || (itemDate.getMonth().toString() === monthFilter);
-
-            if (yearMatch && monthMatch) {
                 const month = item.purchaseDate.substring(0, 7);
                 if (!monthlyData[month]) {
                     monthlyData[month] = { revenue: 0, cogs: 0, opEx: 0 };
                 }
                 
+                // If quantity is null, it's a direct cost where pricePerKg is the total value.
+                // Otherwise, it's price * quantity.
+                const hasQuantity = item.quantity != null && parseFloat(item.quantity) > 0;
                 const price = parseFloat(item.pricePerKg) || 0;
-                const quantity = parseFloat(item.initialQuantity ?? item.quantityOnHand) || 0;
-                let purchaseCost = (quantity > 0) ? (price * quantity) : price;
-                monthlyData[month].opEx += purchaseCost;
-            }
+                const quantity = hasQuantity ? parseFloat(item.quantity) : null;
+                const itemTotalCost = hasQuantity ? price * quantity : price;
+    
+                monthlyData[month].opEx += itemTotalCost;
+                
+                // Check if the item matches the global filter to calculate totals for the top cards and pie chart.
+                const yearMatch = (yearFilter === 'all') || (itemDate.getFullYear().toString() === yearFilter);
+                const monthMatch = (monthFilter === 'all') || (itemDate.getMonth().toString() === monthFilter);
+                if (yearMatch && monthMatch) {
+                    totalGrossExpenditureForPeriod += itemTotalCost;
+                    if (!expenseBreakdown[item.category]) {
+                        expenseBreakdown[item.category] = 0;
+                    }
+                    expenseBreakdown[item.category] += itemTotalCost;
+                }
         }
     });
 
-    // 3. Calculate derived metrics (gross and net profit)
-    Object.values(monthlyData).forEach(month => {
-        month.grossProfit = month.revenue - month.cogs;
-        month.netProfit = month.grossProfit - month.opEx;
-    });
+    const totalFeedAndOtherCosts = totalGrossExpenditureForPeriod;
 
-    // This function provides a more standard financial overview.
-    // It assumes your HTML has been updated to support this new design.
-
-    // --- Calculations for Sold Sheep (Completed Transactions) ---
-    const revenue = soldRecords.reduce((sum, r) => sum + (parseFloat(r.salePrice) || 0), 0);
+    // --- Calculations for Top Stat Cards ---
+    const revenue = soldRecords.reduce((sum, r) => sum + (parseFloat(r.salePrice) || 0), 0); // NOSONAR
     
     let costOfGoodsSold = 0;
     soldRecords.forEach(record => {
         const buyingPrice = parseFloat(record.buyingPrice) || 0;
+        // Ensure COGS for the top card also includes all logged costs (medical and feed).
         const treatmentCostsOnSold = record.treatments ? Object.values(record.treatments).reduce((sum, t) => sum + (parseFloat(t.cost) || 0), 0) : 0;
         costOfGoodsSold += (buyingPrice + treatmentCostsOnSold);
     });
 
     const grossProfit = revenue - costOfGoodsSold;
-
-    // --- Calculations for Active Flock (Operating Expenses) ---
-    let operatingExpenses = 0;
-    const expenseBreakdown = { 'Feed Used': 0, 'Deworming': 0, 'Vaccination': 0, 'Other': 0 };
-    allRecords.forEach(record => {
-        if (record.treatments) {
-            Object.values(record.treatments).forEach(t => {
-                const cost = parseFloat(t.cost) || 0;
-                if (cost > 0) {
-                    operatingExpenses += cost;
-                    // Aggregate for the expense breakdown chart
-                    switch (t.treatmentType) {
-                        case 'Feed': expenseBreakdown['Feed Used'] += cost; break;
-                        case 'Deworming': expenseBreakdown['Deworming'] += cost; break;
-                        case 'Vaccination': expenseBreakdown['Vaccination'] += cost; break;
-                        default: expenseBreakdown['Other'] += cost; break;
-                    }
-                }
-            });
-        }
-    });
-
-    // --- Add direct costs from the feed inventory log ---
-    // This includes items logged as expenses, like travel, which have a quantity of 0.
-    masterFeedInventory.forEach(item => {
-        const isDirectCost = (parseFloat(item.initialQuantity) || 0) === 0;
-        
-        if (isDirectCost && item.purchaseDate) {
-            const itemDate = new Date(item.purchaseDate + 'T00:00:00');
-            if (isNaN(itemDate.getTime())) return; // Skip invalid dates
-
-            const yearMatch = (yearFilter === 'all') || (itemDate.getFullYear().toString() === yearFilter);
-            const monthMatch = (monthFilter === 'all') || (itemDate.getMonth().toString() === monthFilter);
-
-            if (yearMatch && monthMatch) {
-                const cost = parseFloat(item.pricePerKg) || 0;
-                expenseBreakdown['Other'] += cost; // Add to the 'Other' category
-            }
-        }
-    });
-
-    // The total for the card should be the sum of all costs represented in the pie chart.
-    const totalFeedAndOtherCosts = Object.values(expenseBreakdown).reduce((sum, val) => sum + val, 0);
-    const netProfit = grossProfit - totalFeedAndOtherCosts;
+    // Net profit is calculated after subtracting the *unallocated* operating expenses.
+    // Feed costs assigned to sheep are already in COGS, so they are not subtracted again here.
+    const netProfit = grossProfit - totalFeedAndOtherCosts; 
 
     // --- Update UI Stat Cards ---
     // These IDs are suggestions for a new, clearer layout.
@@ -2474,6 +2476,12 @@ function updateFinancialsDashboard() {
             netProfitEl.classList.add('text-gray-800');
         }
     }
+
+    // 3. Calculate derived metrics (gross and net profit) for monthly summary table
+    Object.values(monthlyData).forEach(month => {
+        month.grossProfit = month.revenue - month.cogs;
+        month.netProfit = month.grossProfit - month.opEx;
+    });
 
     // Set colors for profit/loss cards
     const grossProfitEl = document.getElementById('financialsGrossProfit');
@@ -2760,15 +2768,22 @@ function renderMonthlyFinancialSummaryTable(monthlyData) {
 function handleAddFeedItem(e) {
     e.preventDefault();
 
+    const priceValue = parseFloat(document.getElementById('feedPricePerKg').value);
     const quantityValue = document.getElementById('feedQuantity').value;
-    const quantity = (quantityValue && !isNaN(parseFloat(quantityValue)) && parseFloat(quantityValue) > 0) ? parseFloat(quantityValue) : 1;
+    const hasQuantity = quantityValue && !isNaN(parseFloat(quantityValue));
+
+    // If a quantity is provided, the entered price is per unit.
+    // If no quantity is provided, the entered price is the total cost.
+    const finalPrice = priceValue;
+    // Store null if no quantity is given, so we know it's a direct cost
+    const finalQuantity = hasQuantity ? parseFloat(quantityValue) : null;
 
     const newFeedItem = {
         name: document.getElementById('feedName').value.trim(),
         category: document.getElementById('feedCategory').value,
         purchaseDate: document.getElementById('feedPurchaseDate').value,
-        pricePerKg: parseFloat(document.getElementById('feedPricePerKg').value),
-        quantity: quantity
+        pricePerKg: finalPrice,
+        quantity: finalQuantity
     };
 
     if (!newFeedItem.name || !newFeedItem.category || !newFeedItem.purchaseDate || isNaN(newFeedItem.pricePerKg)) {
@@ -2785,6 +2800,74 @@ function handleAddFeedItem(e) {
     });
 }
 
+/**
+ * Updates the labels and visibility of fields in the "Add Feed/Expenditure" form
+ * based on the selected category.
+ */
+function updateFeedFormUI() {
+    const category = document.getElementById('feedCategory').value;
+    const quantityContainer = document.getElementById('feedQuantityContainer');
+    const quantityLabel = document.getElementById('feedQuantityLabel');
+    const quantityInput = document.getElementById('feedQuantity');
+    const priceLabel = document.getElementById('feedPriceLabel');
+
+    if (!quantityContainer || !quantityInput || !priceLabel || !quantityLabel) {
+        console.error("Could not update feed form UI: one or more required elements are missing.");
+        return;
+    }
+
+    // Default state
+    quantityContainer.style.display = 'block';
+    quantityLabel.textContent = 'Quantity';
+
+    switch (category) {
+        case 'Feed':
+            priceLabel.textContent = 'Price per kg (₹)';
+            quantityLabel.textContent = 'Quantity (in kg)';
+            quantityInput.placeholder = 'e.g., 50';
+            break;
+        case 'Medical':
+            priceLabel.textContent = 'Price per unit (e.g., ml/tablet) (₹)';
+            quantityLabel.textContent = 'Quantity (in ml)';
+            quantityInput.placeholder = 'e.g., 1000';
+            break;
+        case 'Travel':
+        case 'Utilities':
+        case 'Other':
+            priceLabel.textContent = 'Total Cost (₹)';
+            quantityContainer.style.display = 'none';
+            quantityInput.value = ''; // Clear value when hidden
+            break;
+        default:
+            priceLabel.textContent = 'Unit Price / Cost (₹)';
+            quantityInput.placeholder = 'e.g., 50';
+            break;
+    }
+}
+
+function handleLogFeedConsumption(e) {
+    e.preventDefault();
+    const form = e.target;
+    const feedId = form.elements.feedConsumptionItem.value;
+    const quantityConsumed = parseFloat(form.elements.feedConsumptionQuantity.value);
+    const date = form.elements.feedConsumptionDate.value;
+
+    if (!feedId || isNaN(quantityConsumed) || quantityConsumed <= 0 || !date) {
+        return alert('Please select a feed item, and enter a valid quantity and date.');
+    }
+
+    const newLogEntry = {
+        feedId: feedId,
+        feedName: form.elements.feedConsumptionItem.options[form.elements.feedConsumptionItem.selectedIndex].text,
+        quantity: quantityConsumed,
+        date: date
+    };
+
+    push(ref(db, 'feedConsumptionLog'), newLogEntry).then(() => {
+        showToast('Consumption Logged', `${quantityConsumed}kg of ${newLogEntry.feedName} logged.`);
+        form.reset();
+    }).catch(error => alert('Error logging consumption: ' + error.message));
+}
 // --- FORM & MODAL HANDLERS ---
 
 /**
@@ -2841,6 +2924,7 @@ function handleAddRecord(e) {
     push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
         showToast('Record Added', `Sheep ID ${newRecord.sheepId} was successfully added.`);
         e.target.reset();
+        if (addSheepModal) addSheepModal.hide();
         const dateEl = document.getElementById('dateRecorded');
         if (dateEl) dateEl.valueAsDate = new Date();
     });
@@ -3098,7 +3182,14 @@ function openTreatmentLog(recordId, sheepId, entryIdToEdit = null) {
     // Populate the feed dropdown
     const feedSelect = document.getElementById('treatmentFeedType');
     if (masterFeedInventory.length > 0) {
-        feedSelect.innerHTML = masterFeedInventory.map(f => `<option value="${f.id}" data-price="${f.pricePerKg}">${f.name} (${(f.quantity || 0).toFixed(1)} kg left)</option>`).join('');
+        feedSelect.innerHTML = masterFeedInventory
+            .map(f => {
+                const unit = f.category === 'Feed' ? 'kg' : (f.category === 'Medical' ? 'ml' : 'units');
+                const quantityDisplay = (f.quantity || 0).toFixed(1);
+                return `<option value="${f.id}" data-price="${f.pricePerKg}" data-quantity="${f.quantity || 0}" data-category="${f.category}">
+                            ${f.name} (${quantityDisplay} ${unit} left)
+                        </option>`;
+            }).join('');
     } else {
         feedSelect.innerHTML = '<option value="" disabled>No feed items in inventory</option>';
     }
@@ -3276,6 +3367,20 @@ function handleSaveTreatment(e) {
     const treatmentWeight = parseFloat(document.getElementById('treatmentWeight').value);
     const costEl = document.getElementById('treatmentCost');
 
+    // Validate feed quantity before proceeding
+    if (treatmentType === 'Feed' && !validateFeedQuantity(true)) {
+        // The validate function shows an alert if the second argument is true.
+        return; // Stop execution
+    }
+
+    // If the treatment is 'Feed', the cost is automatically calculated and read-only.
+    // For other types, it's user-entered.
+    let finalCost = null;
+    if (costEl) {
+        const costValue = parseFloat(costEl.value);
+        if (!isNaN(costValue)) finalCost = costValue;
+    }
+
     const entryData = {
         treatmentDate: treatmentDate,
         treatmentType: treatmentType,
@@ -3283,7 +3388,7 @@ function handleSaveTreatment(e) {
         medication: treatmentType === 'Feed' ? document.getElementById('treatmentFeedType').options[document.getElementById('treatmentFeedType').selectedIndex].text.split(' (')[0] : document.getElementById('medication').value,
         dosage: dosage,
         followUpDate: document.getElementById('followUpDate').value,
-        cost: costEl ? parseFloat(costEl.value) || null : null,
+        cost: finalCost,
         treatmentNotes: document.getElementById('treatmentNotes').value,
     };
 
@@ -3363,6 +3468,41 @@ function calculateFeedCost() {
     document.getElementById('treatmentCost').value = (pricePerKg * quantity).toFixed(2);
 }
 
+/**
+ * Validates the entered feed quantity against the available stock in real-time.
+ * @param {boolean} [showAlert=false] - If true, shows a blocking alert on failure. Otherwise, shows inline validation.
+ * @returns {boolean} - True if the quantity is valid, false otherwise.
+ */
+function validateFeedQuantity(showAlert = false) {
+    const feedSelect = document.getElementById('treatmentFeedType');
+    const quantityInput = document.getElementById('dosage');
+    const selectedOption = feedSelect.options[feedSelect.selectedIndex];
+
+    if (!selectedOption) return true; // No feed selected, so no validation needed.
+
+    const availableQuantity = parseFloat(selectedOption.dataset.quantity || 0);
+    const requestedQuantity = parseFloat(quantityInput.value);
+
+    // Find the feedback div, or create it if it doesn't exist
+    let feedbackDiv = quantityInput.nextElementSibling;
+    if (!feedbackDiv || !feedbackDiv.classList.contains('invalid-feedback')) {
+        feedbackDiv = document.createElement('div');
+        feedbackDiv.className = 'invalid-feedback';
+        quantityInput.parentNode.appendChild(feedbackDiv);
+    }
+
+    if (!isNaN(requestedQuantity) && requestedQuantity > availableQuantity) {
+        const errorMsg = `Quantity cannot exceed available stock (${availableQuantity.toFixed(1)} kg).`;
+        if (showAlert) {
+            alert(errorMsg);
+        }
+        quantityInput.classList.add('is-invalid');
+        feedbackDiv.textContent = errorMsg;
+        return false;
+    }
+    quantityInput.classList.remove('is-invalid');
+    return true;
+}
 function handleBatchSaveTreatment(e) {
     e.preventDefault();
     const selectedCheckboxes = document.querySelectorAll('#scheduleTableBody .schedule-checkbox:checked');
@@ -3502,8 +3642,8 @@ function handleUpdateFeedItem(e) {
     const feedId = document.getElementById('editFeedId').value;
     if (!feedId) return alert('Error: No item ID found.');
 
-    const quantityValue = document.getElementById('editFeedQuantity').value;
-    const quantity = (quantityValue && !isNaN(parseFloat(quantityValue)) && parseFloat(quantityValue) > 0) ? parseFloat(quantityValue) : 1;
+    const quantityValue = document.getElementById('editFeedQuantity').value.trim();
+    const quantity = (quantityValue && !isNaN(parseFloat(quantityValue))) ? parseFloat(quantityValue) : null;
     
     const updatedData = {
         name: document.getElementById('editFeedName').value.trim(),
@@ -3547,6 +3687,8 @@ function handleSaveSettings(e) {
 
     update(ref(db, `users/${user.uid}/settings`), newSettings).then(() => {
         showToast('Settings Saved', 'Your new intervals have been saved successfully.');
+        // Update the local settings object immediately after saving
+        appSettings = { ...appSettings, ...newSettings };
     }).catch(error => {
         alert('Error saving settings: ' + error.message);
     });
@@ -3740,8 +3882,8 @@ function renderProfileForSheep(recordId) {
 
     // --- Right Column Renders ---
     renderProfileWeightTabContent(record);
-    renderProfileTreatmentTabContent(record);
-    updateProfileNavButtons();
+    renderProfileTimelineTabContent(record);
+    renderProfileTreatmentHistoryTab(record);
 }
 
 /**
@@ -3817,69 +3959,156 @@ function renderProfileWeightTabContent(record) {
  * Renders the content for the "Treatment History" tab on the profile page.
  * @param {object} record - The full sheep record object.
  */
-function renderProfileTreatmentTabContent(record) {
+function renderProfileTimelineTabContent(record) {
+    const container = document.getElementById('profileTimelineContainer');
+    if (!container) return;
+
+    const timelineEvents = [];
+ 
+    // 1. Gather all weight entries
+    const weightEntries = gatherAllWeightData(record);
+    weightEntries.forEach(point => {
+        timelineEvents.push({
+            date: point.date,
+            type: 'weight',
+            data: point,
+            id: point.id,
+            recordId: record.id
+        });
+    });
+
+    // 2. Gather all treatment entries
+    if (record.treatments) {
+        Object.entries(record.treatments).forEach(([id, treatment]) => {
+            timelineEvents.push({
+                date: new Date(treatment.treatmentDate + 'T00:00:00'),
+                type: 'treatment',
+                data: treatment,
+                id: id,
+                recordId: record.id
+            });
+        });
+    }
+
+    // 3. Sort all events by date, newest first
+    timelineEvents.sort((a, b) => b.date - a.date);
+
+    if (timelineEvents.length === 0) {
+        container.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-muted">No timeline events found.</td></tr>';
+        return;
+    }
+
+    const rowsHtml = timelineEvents.map(event => {
+        const formattedDate = formatDate(event.date.toISOString().split('T')[0]);
+        let iconHtml = '';
+        let detailsHtml = '';
+        let actionButtons = '';
+
+        if (event.type === 'weight') {
+            iconHtml = '<i class="fas fa-weight-scale fa-2x text-info"></i>';
+            detailsHtml = `
+                <h6 class="mb-1">Weight Logged</h6>
+                <p class="mb-0"><strong>${event.data.weight.toFixed(1)} kg</strong></p>
+            `;
+            actionButtons = `<button class="btn btn-sm btn-outline-primary js-edit-weight" data-record-id="${event.recordId}" data-entry-id="${event.id}" data-source="${event.data.source}" title="Edit Weight"><i class="fas fa-edit"></i></button>`;
+        } else if (event.type === 'treatment') {
+            const treatmentIcon = getTreatmentIcon(event.data.treatmentType);
+            const treatmentBadgeClass = getTreatmentBadgeClass(event.data.treatmentType);
+            iconHtml = `<i class="fas ${treatmentIcon} fa-2x text-primary"></i>`;
+            detailsHtml = `
+                <h6 class="mb-1">
+                    ${event.data.medication || 'Treatment'}
+                    <span class="badge ${treatmentBadgeClass} ms-2">${event.data.treatmentType}</span>
+                </h6>
+                <p class="mb-0 small">
+                    <strong>Dosage:</strong> ${event.data.dosage || 'N/A'}
+                    ${event.data.cost ? `| <strong>Cost:</strong> ${formatCurrency(event.data.cost)}` : ''}
+                </p>
+                ${event.data.symptoms ? `<p class="mb-0 small text-danger-emphasis"><em>Symptoms: ${escapeHTML(event.data.symptoms)}</em></p>` : ''}
+                ${event.data.treatmentNotes ? `<p class="mb-0 small text-muted"><em>Notes: ${escapeHTML(event.data.treatmentNotes)}</em></p>` : ''}
+            `;
+            actionButtons = `<button class="btn btn-sm btn-outline-primary js-edit-treatment" data-record-id="${event.recordId}" data-entry-id="${event.id}" title="Edit Treatment"><i class="fas fa-edit"></i></button>`;
+        }
+
+        return `
+            <tr>
+                <td style="width: 100px;" class="text-center">
+                    <div class="fw-bold">${formattedDate.split('/')[0]}/${formattedDate.split('/')[1]}</div>
+                    <div class="small text-muted">${formattedDate.split('/')[2]}</div>
+                </td>
+                <td style="width: 60px;" class="text-center">${iconHtml}</td>
+                <td>${detailsHtml}</td>
+                <td style="width: 80px;" class="text-end">${actionButtons}</td>
+            </tr>
+        `;
+    }).join('');
+
+    container.innerHTML = rowsHtml;
+}
+
+/**
+ * Renders the dedicated Treatment History table for the profile page.
+ * @param {object} record - The full sheep record object.
+ */
+function renderProfileTreatmentHistoryTab(record) {
     const container = document.getElementById('profileTreatmentHistoryContainer');
     if (!container) return;
 
-    const treatments = record.treatments ? Object.entries(record.treatments).map(([id, data]) => ({ ...data, id })) : [];
-    treatments.sort((a, b) => new Date(b.treatmentDate) - new Date(a.treatmentDate));
-
-    if (treatments.length > 0) {
-        const tableRowsHtml = treatments.map(entry => {
-            const treatmentType = entry.treatmentType || 'General';
-            const medication = entry.medication || 'N/A';
-            const dosage = entry.dosage || 'N/A';
-            const cost = entry.cost ? formatCurrency(entry.cost) : 'N/A';
-            const followUpDisplay = getFollowUpDateDisplay(entry.followUpDate);
-            const notes = entry.treatmentNotes || 'None';
-
-            const treatmentIcon = getTreatmentIcon(entry.treatmentType);
-            const treatmentBadgeClass = getTreatmentBadgeClass(entry.treatmentType);
-            const symptomsHtml = entry.symptoms
-                ? `<div class="mt-2 small text-danger-emphasis"><i class="fas fa-stethoscope fa-fw me-1"></i><strong>Symptoms:</strong> ${escapeHTML(entry.symptoms)}</div>`
-                : '';
-
-
-            const detailsHtml = `
-                <div class="d-flex justify-content-around text-center small">
-                    <div class="px-2">
-                        <div class="text-muted text-uppercase" style="font-size: .65rem;">Medication</div>
-                        <div class="fw-bold fs-6 text-primary">${escapeHTML(medication)}</div>
-                    </div>
-                    <div class="px-2 border-start">
-                        <div class="text-muted text-uppercase" style="font-size: .65rem;">Dosage</div>
-                        <div class="fw-bold fs-6 text-info">${escapeHTML(dosage)}</div>
-                    </div>
-                    <div class="px-2 border-start">
-                        <div class="text-muted text-uppercase" style="font-size: .65rem;">Follow-up</div>
-                        <div class="fw-bold fs-6">${followUpDisplay.html}</div>
-                    </div>
-                </div>
-            `;
-
-            return `
-                <tr class="${followUpDisplay.rowClass}">
-                    <td>
-                        <div class="fw-bold">${formatDate(entry.treatmentDate)}</div>
-                        <span class="badge ${treatmentBadgeClass} mt-1"><i class="fas ${treatmentIcon} fa-fw me-1"></i>${escapeHTML(treatmentType)}</span>
-                    </td>
-                    <td>
-                        ${detailsHtml}
-                        ${symptomsHtml}
-                    </td>
-                    <td class="text-end fw-bold">${cost}</td>
-                    <td class="small fst-italic text-muted">${notes !== 'None' ? escapeHTML(notes) : ''}</td>
-                    <td class="text-center">
-                        <button class="btn btn-sm btn-outline-primary js-edit-treatment" data-record-id="${record.id}" data-entry-id="${entry.id}" title="Edit"><i class="fas fa-edit"></i></button>
-                        <button class="btn btn-sm btn-outline-danger js-delete-treatment" data-record-id="${record.id}" data-entry-id="${entry.id}" title="Delete"><i class="fas fa-trash"></i></button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
-        container.innerHTML = tableRowsHtml;
-    } else {
-        container.innerHTML = '<tr><td colspan="5" class="text-center p-4 text-muted">No treatment history recorded.</td></tr>';
+    if (!record.treatments) {
+        container.innerHTML = '<div class="p-4 text-center text-muted">No treatment history recorded.</div>';
+        return;
     }
+
+    const sortedEntries = Object.entries(record.treatments)
+        .sort((a, b) => new Date(b[1].treatmentDate) - new Date(a[1].treatmentDate));
+
+    const tableHtml = `
+        <table class="table table-striped table-hover align-middle">
+            <thead class="table-dark">
+                <tr>
+                    <th style="width: 15%;">Date & Type</th>
+                    <th style="width: 30%;">Details</th>
+                    <th class="text-end" style="width: 10%;">Cost (₹)</th>
+                    <th style="width: 30%;">Notes</th>
+                    <th class="text-center" style="width: 15%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${sortedEntries.map(([entryId, entry]) => {
+                    const followUpDisplay = getFollowUpDateDisplay(entry.followUpDate);
+                    const treatmentBadgeClass = getTreatmentBadgeClass(entry.treatmentType);
+                    const treatmentIcon = getTreatmentIcon(entry.treatmentType);
+
+                    const dateHtml = `
+                        <div>${formatDate(entry.treatmentDate)}</div>
+                        <span class="badge ${treatmentBadgeClass} mt-1"><i class="fas ${treatmentIcon} fa-fw me-1"></i>${escapeHTML(entry.treatmentType || 'General')}</span>
+                    `;
+
+                    const detailsHtml = `
+                        <div><strong>Medication:</strong> ${escapeHTML(entry.medication || 'N/A')}</div>
+                        <div class="small"><strong>Dosage:</strong> ${escapeHTML(entry.dosage || 'N/A')}</div>
+                        <div class="small mt-1"><strong>Follow-up:</strong> ${followUpDisplay.html}</div>
+                    `;
+
+                    const notesHtml = `
+                        ${entry.symptoms ? `<div class="small text-danger-emphasis"><strong>Symptoms:</strong> ${escapeHTML(entry.symptoms)}</div>` : ''}
+                        ${entry.treatmentNotes ? `<div class="small text-muted fst-italic">${escapeHTML(entry.treatmentNotes)}</div>` : ''}
+                    `;
+
+                    return `
+                        <tr class="${followUpDisplay.rowClass}">
+                            <td>${dateHtml}</td>
+                            <td>${detailsHtml}</td>
+                            <td class="text-end fw-bold">${entry.cost ? formatCurrency(entry.cost) : 'N/A'}</td>
+                            <td>${notesHtml}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-primary js-edit-treatment" data-record-id="${record.id}" data-entry-id="${entryId}" title="Edit"><i class="fas fa-edit"></i> Edit</button>
+                            </td>
+                        </tr>`;
+                }).join('')}
+            </tbody>
+        </table>`;
+    container.innerHTML = tableHtml;
 }
 
 /**
@@ -4325,7 +4554,10 @@ function initializeUI() {
         batchTreatmentModal = initializeModal('batchTreatmentModal');
         editSoldSheepModal = initializeModal('editSoldSheepModal');
         editScheduleModal = initializeModal('editScheduleModal');
+        blogPostModal = initializeModal('blogPostModal');
+        viewPostModal = initializeModal('viewPostModal');
         // The editFeedModal is initialized on-demand in openEditFeedModal to avoid potential race conditions
+        addSheepModal = initializeModal('addSheepModal');
     });
 
     runSafely('Set Default Date', () => {
@@ -4333,11 +4565,10 @@ function initializeUI() {
         const dateEl = document.getElementById('dateRecorded');
         if (dateEl) {
             dateEl.valueAsDate = new Date();
-        }
+        } 
         const feedDateEl = document.getElementById('feedPurchaseDate');
-        if (feedDateEl) {
-            feedDateEl.valueAsDate = new Date();
-        }
+        if (feedDateEl) feedDateEl.valueAsDate = new Date();
+        updateElement('welcomeMessage', `Welcome, ${auth.currentUser?.displayName || 'User'}!`);
     });
 
     runSafely('Add Event Listeners', addEventListeners);
@@ -4347,8 +4578,11 @@ function initializeUI() {
         fetchAllRecords();
         fetchSoldRecords();
         fetchFeedInventory();
+        fetchFeedConsumptionLog();
         fetchArchivedRecords();
-        fetchSettings();
+        fetchBlogPosts();
+        fetchSettings(); 
+        initializeBlog(app, storage, blogPostModal, viewPostModal);
     });
 }
 
@@ -4394,7 +4628,19 @@ function addEventListeners() {
                 renderAllRecordTables();
             }
         }
-        // Table row actions
+        // Dashboard card links
+        else if (action = getAction('.dashboard-card-link')) {
+            if (action.section) {
+                showSection(action.section); // Correctly navigate to the section
+            }
+        }
+        else if (target.closest('#openAddSheepModalBtn')) {
+            const sheepIdInput = document.getElementById('sheepId');
+            if (sheepIdInput) {
+                sheepIdInput.value = generateNewSheepId(masterAllRecords);
+            }
+            if (addSheepModal) addSheepModal.show();
+        }
         if (action = getAction('.js-edit-record')) openEditModal(action.recordId);
         else if (action = getAction('.js-sale-record')) openSaleModal(action.recordId);
         else if (action = getAction('.js-delete-record')) deleteRecord(action.recordId, action.sheepId);
@@ -4408,6 +4654,11 @@ function addEventListeners() {
             } else {
                 alert('Could not find the parent record for this treatment entry.');
             }
+        }
+        // Blog category filter
+        else if (action = getAction('.blog-category-filter')) {
+            currentBlogCategory = action.category;
+            renderBlogSection(masterBlogPosts, currentBlogCategory);
         }
         else if (action = getAction('.js-edit-treatment-from-schedule')) {
             const { recordId, entryId } = action;
@@ -4425,18 +4676,26 @@ function addEventListeners() {
         else if (action = getAction('.js-edit-sold-record')) openEditSoldModal(action.recordId);
         else if (action = getAction('.js-edit-weight')) openWeightModal(action.recordId, action.entryId, action.source);
         else if (action = getAction('.js-delete-weight')) deleteWeightEntry(action.recordId, action.entryId, action.source);
+        else if (action = getAction('.js-view-blog-post')) viewBlogPost(action.postId);
+        else if (action = getAction('.js-edit-blog-post')) openBlogPostModal(action.postId);
+        else if (action = getAction('.js-delete-blog-post')) deleteBlogPost(action.postId, action.postTitle);
+        else if (target.closest('#addBlogPostBtn')) openBlogPostModal();
         else if (action = getAction('.js-mark-checked')) markSheepAsChecked(action.recordId);
         else if (action = getAction('.edit-schedule-btn')) openEditScheduleModal(action.recordId);
         
         // Other buttons
         else if (target.closest('#signOutBtn')) signOut(auth);
+        // Sidebar open/close logic for mobile
         else if (target.closest('#sidebarToggleBtn')) {
-            document.querySelector('.dashboard-sidebar')?.classList.toggle('visible');
-            document.getElementById('sidebar-overlay')?.classList.toggle('visible');
+            document.querySelector('.dashboard-sidebar')?.classList.add('visible');
+            document.getElementById('sidebar-overlay')?.classList.add('visible');
+            document.body.classList.add('sidebar-open');
         }
+        // Close sidebar when overlay is clicked
         else if (target.closest('#sidebar-overlay')) {
             document.querySelector('.dashboard-sidebar')?.classList.remove('visible');
             document.getElementById('sidebar-overlay')?.classList.remove('visible');
+            document.body.classList.remove('sidebar-open');
         }
         else if (target.closest('#batchLogBtn')) openBatchLogModal();
         else if (target.closest('.js-reset-treatment-form')) resetTreatmentForm();
@@ -4511,7 +4770,7 @@ function addEventListeners() {
     addSafeEventListener('editSoldSheepForm', 'submit', handleUpdateSoldRecord);
     addSafeEventListener('addFeedForm', 'submit', handleAddFeedItem);
     addSafeEventListener('editFeedForm', 'submit', handleUpdateFeedItem);
-    addSafeEventListener('weightEntryForm', 'submit', handleSaveWeight);
+    addSafeEventListener('logFeedConsumptionForm', 'submit', handleLogFeedConsumption);
 
     addSafeEventListener('settingsForm', 'submit', handleSaveSettings);
     addSafeEventListener('editScheduleForm', 'submit', handleUpdateSchedule);
@@ -4539,6 +4798,8 @@ function addEventListeners() {
             if(monthFilter) monthFilter.value = 'all';
             const yearFilter = document.getElementById('soldYearFilter');
             if(yearFilter) yearFilter.value = 'all';
+            const searchInput = document.querySelector('#saledSection input[type="search"]');
+            if (searchInput) searchInput.value = '';
             updateSoldRecordsView('all');
         } else if (e.target.closest('#monthlySalesSort button')) {
             const sortBtn = e.target.closest('button');
@@ -4553,7 +4814,15 @@ function addEventListeners() {
         // Listen for changes in the treatment form to update UI
         if (e.target.matches('#treatmentType')) {
             toggleTreatmentFormForFeed(e.target.value);
-        } else if (e.target.matches('#treatmentFeedType') || e.target.matches('#dosage')) {
+        } else if (e.target.matches('#treatmentFeedType')) {
+            // When feed type changes, re-validate and re-calculate cost
+            validateFeedQuantity();
+            const treatmentType = document.getElementById('treatmentType').value;
+            if (treatmentType === 'Feed' || treatmentType === 'Medical') {
+                toggleTreatmentFormForFeed(treatmentType); // Re-evaluate UI based on selection
+                calculateFeedCost();
+            }
+        } else if (e.target.matches('#dosage')) {
             if (document.getElementById('treatmentType').value === 'Feed') calculateFeedCost();
         } else if (e.target.matches('#batchTreatmentType')) {
             toggleBatchDueDateField(e.target.value);
@@ -4622,6 +4891,12 @@ function addEventListeners() {
     addSafeEventListener('addWeightBtn', 'click', () => {
         const recordId = document.getElementById('weightSheepSelector')?.value;
         if (recordId) openWeightModal(recordId);
+    });
+
+    // Real-time validation for feed quantity input
+    addSafeEventListener('dosage', 'input', () => {
+        // Only validate if the current treatment type is 'Feed'
+        if (document.getElementById('treatmentType').value === 'Feed') validateFeedQuantity();
     });
 }
 
