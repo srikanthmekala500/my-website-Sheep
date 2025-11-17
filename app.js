@@ -890,7 +890,10 @@ function renderMonthlySalesSummary(monthlyTotals, sortBy = monthlySummarySort) {
         sortedMonths = Object.keys(monthlyTotals).sort().reverse();
     }
 
-    let listHtml = '<ul class="list-group list-group-flush">';
+    // Added inline style to set a max height and enable vertical scrolling.
+    // This keeps the card a consistent size on the dashboard.
+    let listHtml = '<ul class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">';
+
     sortedMonths.forEach(monthKey => {
         const monthData = monthlyTotals[monthKey];
         const { sales, profit } = monthData;
