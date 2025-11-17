@@ -10,6 +10,10 @@ let masterBlogPosts = [];
 let blogPostModal;
 let viewPostModal;
 let quillEditor;
+let currentPage = 1;
+const POSTS_PER_PAGE = 6; // Display 6 posts per page
+let htmlEditModal; // Variable to hold the HTML edit modal instance
+let currentEditorView = 'compose'; // 'compose' or 'html'
 
 export function initializeBlog(app, storageInstance, blogModalInstance, viewModalInstance) {
     db = getDatabase(app);
@@ -18,6 +22,38 @@ export function initializeBlog(app, storageInstance, blogModalInstance, viewModa
     blogPostModal = blogModalInstance;
     viewPostModal = viewModalInstance;
 
+    // Dynamically add the HTML Edit Modal to the body
+    if (!document.getElementById('htmlEditModal')) {
+        const modalHtml = `
+            <div class="modal fade" id="htmlEditModal" tabindex="-1" aria-labelledby="htmlEditModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="htmlEditModalLabel">Edit HTML Source</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <textarea id="htmlSourceEditor" class="form-control" rows="20"></textarea>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="saveHtmlSource">Apply HTML</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        htmlEditModal = new bootstrap.Modal(document.getElementById('htmlEditModal'));
+
+        // Add listener for the "Apply HTML" button
+        document.getElementById('saveHtmlSource').addEventListener('click', () => {
+            const html = document.getElementById('htmlSourceEditor').value;
+            quillEditor.root.innerHTML = html;
+            htmlEditModal.hide();
+        });
+    }
+
     // Initialize the Quill editor
     quillEditor = new Quill('#blogPostEditor', {
         theme: 'snow',
@@ -25,26 +61,67 @@ export function initializeBlog(app, storageInstance, blogModalInstance, viewModa
             toolbar: [
                 [{ 'header': [1, 2, 3, false] }],
                 ['bold', 'italic', 'underline', 'link'],
-                [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-                ['image', 'clean']
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                ['image', 'code-block', 'clean']
             ]
         }
     });
 
-    // Override the default image handler
     quillEditor.getModule('toolbar').addHandler('image', imageHandler);
 
     // Add event listeners specific to the blog
     document.getElementById('blogPostForm').addEventListener('submit', handleSaveBlogPost);
-    const searchInput = document.getElementById('blogSearchInput');
-    if (searchInput) searchInput.addEventListener('keyup', () => renderBlogSection(masterBlogPosts, 'all'));
+    const paginationContainer = document.getElementById('blogPagination');
+    if (paginationContainer) paginationContainer.addEventListener('click', handlePaginationClick);
+
+    // Add event listeners for the new toggle buttons
+    document.getElementById('composeViewBtn')?.addEventListener('click', () => toggleEditorView('compose'));
+    document.getElementById('htmlViewBtn')?.addEventListener('click', () => toggleEditorView('html'));
 }
+
+
+/**
+ * Toggles between the Quill rich text editor and a raw HTML textarea.
+ * @param {string} view - 'compose' for Quill, 'html' for raw HTML.
+ */
+function toggleEditorView(view) {
+    const quillContainer = document.getElementById('quillEditorContainer');
+    const htmlEditor = document.getElementById('blogPostHtmlEditor');
+    const composeBtn = document.getElementById('composeViewBtn');
+    const htmlBtn = document.getElementById('htmlViewBtn');
+
+    if (!quillContainer || !htmlEditor || !composeBtn || !htmlBtn) {
+        console.error("Editor toggle elements not found.");
+        return;
+    }
+
+    if (view === 'html') {
+        htmlEditor.value = quillEditor.root.innerHTML; // Get HTML from Quill
+        quillContainer.style.display = 'none';
+        htmlEditor.style.display = 'block';
+        composeBtn.classList.remove('active', 'btn-primary');
+        composeBtn.classList.add('btn-outline-primary');
+        htmlBtn.classList.add('active', 'btn-primary');
+        htmlBtn.classList.remove('btn-outline-primary');
+    } else { // 'compose' view
+        htmlEditor.style.display = 'none';
+        quillContainer.style.display = 'block';
+        htmlBtn.classList.remove('active', 'btn-primary');
+        htmlBtn.classList.add('btn-outline-primary');
+        composeBtn.classList.add('active', 'btn-primary');
+        composeBtn.classList.remove('btn-outline-primary');
+        quillEditor.root.innerHTML = htmlEditor.value; // Set HTML to Quill AFTER it's visible
+    }
+    currentEditorView = view;
+}
+
 
 /**
  * Sets the master list of blog posts for the module to use.
  * @param {Array} posts - An array of blog post objects.
  */
 export function setBlogPosts(posts) {
+    if (!posts) return;
     masterBlogPosts = posts;
 }
 
@@ -67,21 +144,24 @@ function getCategoryBadgeClass(category) {
  * Renders the blog section with all posts.
  */
 export function renderBlogSection(posts = [], activeCategory = 'all') {
+    // When a category filter is clicked, app.js calls this. We should reset the page.
+    // A simple check: if the category is different from the one that was rendered, reset page.
+    // This is a bit implicit. A better way would be for the caller to reset the page.
+    // For now, we'll handle it in the event listener in app.js.
+
     // This function is now also triggered by search, so we need to get the current search term
     const container = document.getElementById('blogPostsContainer');
     const filterContainer = document.getElementById('blogCategoryFilters');
     const searchInput = document.getElementById('blogSearchInput');
-    if (!container || !filterContainer || !searchInput) return;
+    const paginationContainer = document.getElementById('blogPagination');
+    if (!container || !filterContainer || !searchInput || !paginationContainer) return;
 
     const searchTerm = searchInput.value.toLowerCase();
 
     // --- 1. Render Category Filters ---
     const categories = ['all', ...new Set(posts.map(p => p.category).filter(Boolean))];
-    // Create a combined list of categories and all unique tags
-    const allTags = [...new Set(posts.flatMap(p => p.tags || []))];
-    const filterItems = [...new Set([...categories, ...allTags])];
 
-    const filterHtml = filterItems.map(category => {
+    const filterHtml = categories.map(category => {
         const isActive = category === activeCategory;
         return `
             <button 
@@ -95,16 +175,19 @@ export function renderBlogSection(posts = [], activeCategory = 'all') {
 
 
     // --- 2. Filter and Render Posts ---
-    let postsToRender = [...posts];
+    let filteredPosts = [...posts];
 
     // Apply category/tag filter
-    if (activeCategory !== 'all') {
-        postsToRender = postsToRender.filter(post => post.category === activeCategory || (post.tags && post.tags.includes(activeCategory)));
+    if (activeCategory === 'drafts') {
+        // Special filter for viewing drafts
+        filteredPosts = filteredPosts.filter(post => post.status === 'draft');
+    } else if (activeCategory !== 'all') {
+        filteredPosts = filteredPosts.filter(post => post.category === activeCategory);
     }
 
     // Apply search term filter
     if (searchTerm) {
-        postsToRender = postsToRender.filter(post => {
+        filteredPosts = filteredPosts.filter(post => {
             const titleMatch = post.title.toLowerCase().includes(searchTerm);
             const contentMatch = post.content.toLowerCase().includes(searchTerm);
             const tagMatch = post.tags ? post.tags.some(tag => tag.toLowerCase().includes(searchTerm)) : false;
@@ -113,23 +196,54 @@ export function renderBlogSection(posts = [], activeCategory = 'all') {
         });
     }
 
+    // Sort posts by date, newest first, before pagination
+    filteredPosts.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Prioritize featured posts by moving them to the front of the array
+    filteredPosts.sort((a, b) => {
+        if (a.isFeatured && !b.isFeatured) return -1;
+        if (!a.isFeatured && b.isFeatured) return 1;
+        return new Date(b.date) - new Date(a.date); // Fallback to date sort
+    });
+
+    // Exclude drafts from the public view unless the "Drafts" filter is selected
+    if (activeCategory !== 'drafts') {
+        filteredPosts = filteredPosts.filter(post => post.status !== 'draft');
+    }
+
+    // --- 3. Paginate Posts ---
+    const totalPages = Math.ceil(filteredPosts.length / POSTS_PER_PAGE);
+    const startIndex = (currentPage - 1) * POSTS_PER_PAGE;
+    const endIndex = startIndex + POSTS_PER_PAGE;
+    const postsToRender = filteredPosts.slice(startIndex, endIndex);
+
     if (postsToRender.length === 0) {
         const message = activeCategory === 'all'
-            ? 'No blog posts yet. Click "New Post" to get started!'
-            : `No posts found in the category "${escapeHTML(activeCategory)}".`;
+            ? (searchTerm ? 'No posts match your search.' : 'No blog posts yet. Click "New Post" to get started!')
+            : `No posts found for "${escapeHTML(activeCategory)}".`;
         container.innerHTML = `<div class="col-12 text-center"><p class="text-muted">${message}</p></div>`;
+        paginationContainer.innerHTML = ''; // Clear pagination if no results
         return;
     }
 
-    // Sort posts by date, newest first
-    const sortedPosts = postsToRender.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    const postsHtml = sortedPosts.map(post => {
+    // --- 4. Render Post Cards ---
+    const postsHtml = postsToRender.map(post => {
         const snippet = createExcerpt(post.content);
         const categoryBadgeClass = getCategoryBadgeClass(post.category);
-        const coverImageHtml = extractFirstImage(post.content)
-            ? `<div class="card-img-top-container"><img src="${escapeHTML(extractFirstImage(post.content))}" class="card-img-top" alt="${escapeHTML(post.title)}"></div>`
+        const firstImage = extractFirstImage(post.content);
+        const draftIndicatorHtml = post.status === 'draft'
+            ? `<div class="position-absolute top-0 start-0 m-2"><span class="badge bg-secondary"><i class="fas fa-pencil-alt me-1"></i>Draft</span></div>`
             : '';
+
+        const coverImageHtml = firstImage
+            ? `<div class="card-img-top-container"><img src="${escapeHTML(firstImage)}" class="card-img-top" alt="${escapeHTML(post.title)}"></div>`
+            : `<div class="card-img-top-container d-flex align-items-center justify-content-center bg-light"><div class="text-center text-muted"><i class="fas fa-image fa-3x mb-2"></i><p>No Image</p></div></div>`;
+
+        const featuredBannerHtml = post.isFeatured
+            ? `<div class="position-absolute top-0 end-0 m-2"><span class="badge bg-warning text-dark"><i class="fas fa-star me-1"></i>Featured</span></div>`
+            : '';
+
+
         
         const tagsHtml = (post.tags && post.tags.length > 0)
             ? `<div class="mt-auto pt-3">
@@ -139,7 +253,9 @@ export function renderBlogSection(posts = [], activeCategory = 'all') {
 
         return `
             <div class="col-md-6 col-lg-4 mb-4">
-                <div class="card h-100 shadow-sm">
+                <div class="card h-100 shadow-sm position-relative">
+                    ${draftIndicatorHtml}
+                    ${featuredBannerHtml}
                     ${coverImageHtml}
                     <div class="card-body d-flex flex-column">
                         <span class="badge ${categoryBadgeClass} mb-2 align-self-start">${escapeHTML(post.category || 'General')}</span>
@@ -163,6 +279,9 @@ export function renderBlogSection(posts = [], activeCategory = 'all') {
     }).join('');
 
     container.innerHTML = postsHtml;
+
+    // --- 5. Render Pagination Controls ---
+    renderPaginationControls(totalPages, paginationContainer);
 }
 
 /**
@@ -238,6 +357,53 @@ function imageHandler() {
     };
 }
 
+/**
+ * Renders the pagination controls.
+ * @param {number} totalPages - The total number of pages.
+ * @param {HTMLElement} container - The container element for the pagination.
+ */
+function renderPaginationControls(totalPages, container) {
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let paginationHtml = '';
+
+    // Previous Button
+    paginationHtml += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" data-page="${currentPage - 1}" aria-label="Previous">
+                <span aria-hidden="true">&laquo;</span>
+            </a>
+        </li>
+    `;
+
+    // Page Number Buttons
+    for (let i = 1; i <= totalPages; i++) {
+        paginationHtml += `
+            <li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" data-page="${i}">${i}</a>
+            </li>
+        `;
+    }
+
+    // Next Button
+    paginationHtml += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" data-page="${currentPage + 1}" aria-label="Next">
+                <span aria-hidden="true">&raquo;</span>
+            </a>
+        </li>
+    `;
+
+    container.innerHTML = paginationHtml;
+}
+
+export function resetBlogPage() {
+    currentPage = 1;
+}
+
 export function openBlogPostModal(postId = null) {
     const form = document.getElementById('blogPostForm');
     form.reset();
@@ -250,26 +416,35 @@ export function openBlogPostModal(postId = null) {
             document.getElementById('blogPostTitle').value = post.title;
             document.getElementById('blogPostCategory').value = post.category || '';
             document.getElementById('blogPostTags').value = post.tags ? post.tags.join(', ') : '';
-            quillEditor.root.innerHTML = post.content; // Set content in Quill editor
+            document.getElementById('blogPostIsFeatured').checked = post.isFeatured || false;
+            quillEditor.root.innerHTML = post.content;
+            document.getElementById('blogPostHtmlEditor').value = post.content; // Also set for HTML editor
+            toggleEditorView('compose'); // Default to compose view when opening for edit
         }
     } else {
         document.getElementById('blogPostModalTitle').textContent = 'New Blog Post';
-        quillEditor.setText(''); // Clear the editor for a new post
+        document.getElementById('blogPostIsFeatured').checked = false;
+        quillEditor.setText('');
+        document.getElementById('blogPostHtmlEditor').value = ''; // Clear HTML editor
+        toggleEditorView('compose'); // Default to compose view for new post
     }
-    blogPostModal.show();
+    blogPostModal.show(); // This line was missing
 }
 
 function handleSaveBlogPost(e) {
     e.preventDefault();
+    const saveAction = e.submitter.value; // 'draft' or 'published'
+
     const postId = document.getElementById('blogPostId').value;
     const tagsInput = document.getElementById('blogPostTags').value;
-    // Convert comma-separated string into an array of trimmed, non-empty tags
     const tags = tagsInput ? tagsInput.split(',').map(tag => tag.trim()).filter(Boolean) : [];
     const postData = {
         title: document.getElementById('blogPostTitle').value,
         category: document.getElementById('blogPostCategory').value,
+        status: saveAction, // Set the status based on the button clicked
         tags: tags,
-        content: quillEditor.root.innerHTML, // Get HTML content from Quill
+        isFeatured: document.getElementById('blogPostIsFeatured').checked,
+        content: currentEditorView === 'html' ? document.getElementById('blogPostHtmlEditor').value : quillEditor.root.innerHTML, // Get content from active editor
         author: auth.currentUser?.displayName || 'Admin',
         date: new Date().toISOString().split('T')[0]
     };
@@ -280,8 +455,10 @@ function handleSaveBlogPost(e) {
 
     promise.then(() => {
         blogPostModal.hide();
-        showToast('Success', `Blog post has been ${postId ? 'updated' : 'saved'}.`);
-    }).catch(error => alert('Error saving post: ' + error.message));
+        showToast(postId ? 'Post Updated' : 'Post Saved', `Your blog post "${postData.title}" has been saved.`);
+    }).catch(error => {
+        alert('Error saving post: ' + error.message);
+    });
 }
 
 export function viewBlogPost(postId) {
@@ -293,8 +470,7 @@ export function viewBlogPost(postId) {
     const postBody = document.getElementById('viewPostBody');
     const postImageContainer = document.getElementById('viewPostImageContainer');
 
-    if (!modalTitle || !postMeta || !postBody || !postImageContainer || !viewPostModal) {
-        console.error("UI Error: One or more elements for the blog post view modal are missing from the DOM.");
+    if (!modalTitle || !postMeta || !postBody || !postImageContainer) {
         alert("Could not display the blog post because a UI element is missing. Please check the console for details.");
         return;
     }
@@ -314,12 +490,16 @@ export function viewBlogPost(postId) {
 
     // Handle cover image
     const firstImage = extractFirstImage(post.content);
+    let contentToRender = post.content;
+
     if (firstImage) {
         postImageContainer.innerHTML = `<img src="${escapeHTML(firstImage)}" class="img-fluid rounded mb-3" alt="Cover image for ${escapeHTML(post.title)}">`;
+        // Remove the first image from the content to prevent it from showing twice.
+        contentToRender = contentToRender.replace(/<img[^>]*>/, '');
     } else {
         postImageContainer.innerHTML = ''; // Clear it if no image
     }
-    postBody.innerHTML = `<div class="ql-snow"><div class="ql-editor">${post.content}</div></div>`; // Render the full HTML content from Quill
+    postBody.innerHTML = contentToRender; // Render the (potentially modified) HTML content
 
     viewPostModal.show();
 }
@@ -330,4 +510,19 @@ export function deleteBlogPost(postId, postTitle) {
             showToast('Post Deleted', `"${postTitle}" has been deleted.`, 'danger');
         }).catch(error => alert('Error deleting post: ' + error.message));
     }
+}
+
+/**
+ * Handles clicks on the pagination controls.
+ * @param {Event} e - The click event.
+ */
+function handlePaginationClick(e) {
+    e.preventDefault();
+    const link = e.target.closest('a.page-link');
+    if (!link || link.parentElement.classList.contains('disabled')) return;
+
+    const page = parseInt(link.dataset.page, 10);
+    currentPage = page;
+    // Re-render the blog section with the new page, using the currently active category from app.js
+    window.renderCurrentBlogView(); // We'll expose a function from app.js to do this
 }

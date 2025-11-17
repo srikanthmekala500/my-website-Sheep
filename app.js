@@ -1,5 +1,6 @@
 let healthStatusPieChartInstance = null;
 
+import { initializeBlog, renderBlogSection, openBlogPostModal, viewBlogPost, deleteBlogPost, setBlogPosts, resetBlogPage } from './blog.js';
 // Custom Chart.js plugin to display text in the center of a doughnut chart.
 const doughnutCenterText = { // NOSONAR
     id: 'doughnutCenterText',
@@ -33,7 +34,6 @@ const doughnutCenterText = { // NOSONAR
 Chart.register(doughnutCenterText); // Register the plugin globally once.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-import { initializeBlog, renderBlogSection, openBlogPostModal, viewBlogPost, deleteBlogPost, setBlogPosts } from './blog.js';
 import { formatDate, escapeHTML, showToast } from './utils.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
 import { getStorage } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-storage.js";
@@ -312,6 +312,11 @@ function showSection(sectionName) { // NOSONAR
         if (overlay) overlay.classList.remove('visible');
     }
 }
+
+// Expose a global function for the blog module to call for re-rendering on pagination
+window.renderCurrentBlogView = () => {
+    renderBlogSection(masterBlogPosts, currentBlogCategory);
+};
 
 // --- DATA FETCHING ---
 
@@ -3073,6 +3078,10 @@ function handleUpdateSchedule(e) {
 
 function deleteRecord(recordId, sheepId) {
     if (confirm(`Are you sure you want to PERMANENTLY DELETE sheep "${sheepId}" and all its history? This action cannot be undone.`)) {
+    const confirmationText = `Type the sheep ID "${sheepId}" to confirm deletion.`;
+    const userInput = prompt(`This action is irreversible and will permanently delete all data for this sheep.\n\n${confirmationText}`);
+
+    if (userInput === sheepId) {
         remove(ref(db, `sheepHealthRecords/${recordId}`))
             .then(() => {
                 showToast('Deletion Successful', `Sheep ID ${sheepId} has been permanently deleted.`, 'danger');
@@ -3081,7 +3090,10 @@ function deleteRecord(recordId, sheepId) {
                 console.error("Error deleting record:", error);
                 alert("An error occurred while deleting the record: " + error.message);
             });
+    } else if (userInput !== null) { // User clicked OK but didn't type the correct ID
+        alert('Deletion cancelled. The entered ID did not match.');
     }
+}
 }
 
 function archiveRecord(recordId) {
@@ -4657,6 +4669,7 @@ function addEventListeners() {
         }
         // Blog category filter
         else if (action = getAction('.blog-category-filter')) {
+            resetBlogPage(); // Reset to page 1 when category changes
             currentBlogCategory = action.category;
             renderBlogSection(masterBlogPosts, currentBlogCategory);
         }
@@ -4676,7 +4689,7 @@ function addEventListeners() {
         else if (action = getAction('.js-edit-sold-record')) openEditSoldModal(action.recordId);
         else if (action = getAction('.js-edit-weight')) openWeightModal(action.recordId, action.entryId, action.source);
         else if (action = getAction('.js-delete-weight')) deleteWeightEntry(action.recordId, action.entryId, action.source);
-        else if (action = getAction('.js-view-blog-post')) viewBlogPost(action.postId);
+        else if (action = getAction('.js-view-blog-post')) viewBlogPost(action.postId); // This was on the wrong line
         else if (action = getAction('.js-edit-blog-post')) openBlogPostModal(action.postId);
         else if (action = getAction('.js-delete-blog-post')) deleteBlogPost(action.postId, action.postTitle);
         else if (target.closest('#addBlogPostBtn')) openBlogPostModal();
