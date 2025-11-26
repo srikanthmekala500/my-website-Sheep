@@ -55,17 +55,19 @@ export function initializeBlog(app, storageInstance, blogModalInstance, viewModa
     }
 
     // Initialize the Quill editor
-    quillEditor = new Quill('#blogPostEditor', {
-        theme: 'snow',
-        modules: {
-            toolbar: [
-                [{ 'header': [1, 2, 3, false] }],
-                ['bold', 'italic', 'underline', 'link'],
-                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                ['image', 'code-block', 'clean']
-            ]
-        }
-    });
+var quillEditor = new Quill('#blogPostEditor', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            [{ 'header': [1, 2, 3, false] }],
+            ['bold', 'italic', 'underline', 'link'],
+            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+            ['image', 'code-block', 'clean', 'table']
+        ],
+        table: true
+    }
+});
+
 
     quillEditor.getModule('toolbar').addHandler('image', imageHandler);
 
@@ -525,4 +527,5 @@ function handlePaginationClick(e) {
     currentPage = page;
     // Re-render the blog section with the new page, using the currently active category from app.js
     window.renderCurrentBlogView(); // We'll expose a function from app.js to do this
+
 }
