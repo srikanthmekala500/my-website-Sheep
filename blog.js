@@ -55,18 +55,17 @@ export function initializeBlog(app, storageInstance, blogModalInstance, viewModa
     }
 
     // Initialize the Quill editor
-var quillEditor = new Quill('#blogPostEditor', {
-    theme: 'snow',
-    modules: {
-        toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'link'],
-            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-            ['image', 'code-block', 'clean', 'table']
-        ],
-        table: true
-    }
-});
+quillEditor = new Quill('#blogPostEditor', {
+        theme: 'snow',
+        modules: {
+            toolbar: [
+                [{ 'header': [1, 2, 3, false] }],
+                ['bold', 'italic', 'underline', 'link'],
+                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                ['image', 'code-block', 'clean']
+            ]
+        }
+    });
 
 
     quillEditor.getModule('toolbar').addHandler('image', imageHandler);
@@ -529,3 +528,4 @@ function handlePaginationClick(e) {
     window.renderCurrentBlogView(); // We'll expose a function from app.js to do this
 
 }
+
