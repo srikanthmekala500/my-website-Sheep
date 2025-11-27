@@ -68,9 +68,7 @@ quillEditor = new Quill('#blogPostEditor', {
       [{ 'indent': '-1' }, { 'indent': '+1' }],
       [{ 'font': [] }, { 'size': ['small', false, 'large', 'huge'] }],
       ['image', 'clean'],
-      [{ 'table': true }]
-    ],
-    table: true
+    ]
   }
 });
 
@@ -437,7 +435,7 @@ export function openBlogPostModal(postId = null) {
         document.getElementById('blogPostHtmlEditor').value = ''; // Clear HTML editor
         toggleEditorView('compose'); // Default to compose view for new post
     }
-    blogPostModal.show(); // This line was missing
+    blogPostModal.show();
 }
 
 function handleSaveBlogPost(e) {
@@ -536,6 +534,3 @@ function handlePaginationClick(e) {
     window.renderCurrentBlogView(); // We'll expose a function from app.js to do this
 
 }
-
-
-
