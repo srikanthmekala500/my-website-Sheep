@@ -4275,7 +4275,7 @@ function handleSaveWeight(e) {
 
     let promise;
     if (source === 'initial') {
-        promise = update(ref(db, recordPath), { weight: weight, dateRecorded: date });
+        promise = update(ref(db, recordPath), { weight: weight });
     } else {
         const data = { date, weight };
         const path = ref(db, `${recordPath}/weights`);
@@ -4283,6 +4283,9 @@ function handleSaveWeight(e) {
     }
 
     promise.then(() => {
+        showToast('Weight Saved', `Weight entry for record ${recordId} saved successfully.`);
+        console.log(`Weight entry for record ${recordId} saved successfully.`);
+        renderWeightChartForSheep(recordId); // Explicitly re-render the chart for the current sheep
         weightEntryModal.hide();
     }).catch(err => alert('Error saving weight: ' + err.message));
 }
@@ -4649,11 +4652,10 @@ function addEventListeners() {
                 showSection(action.section); // Correctly navigate to the section
             }
         }
-        else if (target.closest('#openAddSheepModalBtn')) {
-            const sheepIdInput = document.getElementById('sheepId');
-            if (sheepIdInput) {
-                sheepIdInput.value = generateNewSheepId(masterAllRecords);
-            }
+        // This logic is now handled by the showSection function for the inline form.
+        // The button will now simply navigate to the records section if needed.
+        else if (target.closest('#openAddSheepModalBtn')) { // NOSONAR
+            showSection('records');
             if (addSheepModal) addSheepModal.show();
         }
         if (action = getAction('.js-edit-record')) openEditModal(action.recordId);
@@ -4764,6 +4766,16 @@ function addEventListeners() {
             treatmentLogListener = null;
         }
     });
+
+    // Fix for aria-hidden focus issue on modals
+    // This event fires *before* the modal is hidden, preventing an accessibility warning.
+    addSafeEventListener('weightEntryModal', 'hide.bs.modal', () => {
+        const focusedElement = document.activeElement;
+        // If an element inside the modal has focus, blur it to move focus to the body.
+        if (document.getElementById('weightEntryModal').contains(focusedElement)) {
+            focusedElement.blur();
+        }
+    });
     addSafeEventListener('mainNav', 'click', e => {
         const link = e.target.closest('a.nav-link[data-section]');
         if (link) {
@@ -4774,6 +4786,7 @@ function addEventListeners() {
 
     // --- Form Submissions ---
     addSafeEventListener('sheepHealthForm', 'submit', handleAddRecord);
+    addSafeEventListener('weightEntryForm', 'submit', handleSaveWeight);
     addSafeEventListener('editSheepForm', 'submit', handleUpdateRecord);
     mainApp.addEventListener('input', e => {
         if (e.target.matches('#treatmentLogSearchInput, #profileTreatmentSearchInput')) {
