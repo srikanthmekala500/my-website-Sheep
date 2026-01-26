@@ -267,20 +267,30 @@ function handleLogin(e) {
  * @param {string} sectionName - The name of the section to show.
  */
 function showSection(sectionName) { // NOSONAR
-    ['home', 'records', 'corentin', 'overdue', 'treatment', 'pregnant', 'saled', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth', 'feed', 'feedConsumption', 'financials', 'settings', 'blog'].forEach(id => {
+    ['home', 'records', 'corentin', 'overdue', 'treatment', 'pregnant', 'saled', 'archived', 'schedule', 'weekly', 'weight', 'profile', 'growth', 'feed', 'feedConsumption', 'financials', 'settings', 'blog'].forEach(id => { // NOSONAR
         document.getElementById(id + 'Section').classList.add('hidden');
     });
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
 
-    document.getElementById(sectionName + 'Section').classList.remove('hidden');
+    const sectionElement = document.getElementById(sectionName + 'Section');
+    if (!sectionElement) {
+        console.error(`Error: Section element with ID '${sectionName}Section' not found.`);
+        return;
+    }
     document.getElementById(sectionName + 'Section').classList.remove('hidden');
     document.querySelector(`.nav-link[data-section="${sectionName}"]`).classList.add('active');
 
-    // When showing the records section, pre-fill the next available Sheep ID.
-    if (sectionName === 'records') {
+    // When showing the home section, pre-fill the next available Sheep ID.
+    if (sectionName === 'home') {
         const sheepIdInput = document.getElementById('sheepId');
         if (sheepIdInput) {
             sheepIdInput.value = generateNewSheepId(masterAllRecords);
+        }
+        const dateEl = document.getElementById('dateRecorded');
+        if (dateEl) dateEl.valueAsDate = new Date();
+        const form = document.getElementById('sheepHealthForm');
+        if (form) {
+            form.reset();
         }
     }
 
@@ -489,6 +499,12 @@ function fetchAllRecords() {
         checkTreatmentFollowUps();
         checkPreventativeCareReminders();
         updateTimestamp(); // Update timestamp on successful data fetch
+
+        // Ensure the Add Sheep form has a generated ID
+        const sheepIdInput = document.getElementById('sheepId');
+        if (sheepIdInput) {
+            sheepIdInput.value = generateNewSheepId(masterAllRecords);
+        }
     }, (error) => {
         console.error("Fatal Error: Could not fetch main sheep records.", error); // NOSONAR
         const errorMsg = "Error loading records. Please check your connection and refresh.";
@@ -1208,7 +1224,8 @@ function renderHealthyRow(record) {
         <tr>
             <td>
                 <a href="#" class="fw-bold fs-5 text-decoration-none profile-link" data-sheep-id="${record.id}">${record.sheepId}</a>
-                <div class="small text-muted">${record.gender || 'N/A'}, ${record.breed || 'N/A'} &bull; ${calculateAge(record.dateRecorded)}</div>
+                <div class="small text-muted">${record.gender || 'N/A'}, ${record.breed || 'N/A'} &bull; Age: ${calculateAge(record.dateRecorded)}</div>
+                <div class="small text-muted">Recorded: ${formatDate(record.dateRecorded)}</div>
                 ${notesHtml}
             </td>
             <td><span class="badge fs-6 ${getBootstrapStatusClass(record.healthStatus)}">${record.healthStatus}</span></td>
@@ -2932,9 +2949,11 @@ function handleAddRecord(e) {
     push(ref(db, 'sheepHealthRecords'), newRecord).then(() => {
         showToast('Record Added', `Sheep ID ${newRecord.sheepId} was successfully added.`);
         e.target.reset();
-        if (addSheepModal) addSheepModal.hide();
+        // The form is now inline, so we just need to reset the date and generate a new ID for the next entry.
         const dateEl = document.getElementById('dateRecorded');
         if (dateEl) dateEl.valueAsDate = new Date();
+        const sheepIdInput = document.getElementById('sheepId');
+        if (sheepIdInput) sheepIdInput.value = generateNewSheepId(masterAllRecords);
     });
 }
 
@@ -3820,11 +3839,11 @@ function renderProfileForSheep(recordId) {
             ${createInfoItem('Gender', record.gender || 'N/A', record.gender === 'Male' ? 'fa-mars' : 'fa-venus', 'text-pink')}
             ${createInfoItem('Breed', record.breed || 'N/A', 'fa-tag', 'text-secondary')}
             ${createInfoItem('Buy Price', record.buyingPrice ? formatCurrency(record.buyingPrice) : 'N/A', 'fa-rupee-sign', 'text-success')}
+            ${createInfoItem('Date Recorded', formatDate(record.dateRecorded), 'fa-calendar-alt', 'text-dark')}
             <li class="list-group-item px-2">
                 <div class="d-flex align-items-center text-muted mb-1">
                     <i class="fas fa-sticky-note fa-fw me-2" style="width: 20px;"></i>
                     <span>Initial Notes</span>
-                    <span class="ms-auto small text-muted">(on ${formatDate(record.dateRecorded)})</span>
                 </div>
                 <p class="mb-0 small fst-italic" style="white-space: pre-wrap;">${record.notes ? escapeHTML(record.notes) : 'No initial notes recorded.'}</p>
             </li>
@@ -4655,8 +4674,7 @@ function addEventListeners() {
         // This logic is now handled by the showSection function for the inline form.
         // The button will now simply navigate to the records section if needed.
         else if (target.closest('#openAddSheepModalBtn')) { // NOSONAR
-            showSection('records');
-            if (addSheepModal) addSheepModal.show();
+            showSection('home');
         }
         if (action = getAction('.js-edit-record')) openEditModal(action.recordId);
         else if (action = getAction('.js-sale-record')) openSaleModal(action.recordId);
